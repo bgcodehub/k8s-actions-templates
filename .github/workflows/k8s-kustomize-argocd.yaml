@@ -1,8 +1,5 @@
 name: CI/CD Pipeline
 
-description: >
-  A comprehensive pipeline designed to simplify Kubernetes deployments for developers, abstracting repetitive tasks and providing detailed feedback.
-
 on:
   workflow_dispatch:
     inputs:
