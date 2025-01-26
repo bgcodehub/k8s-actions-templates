@@ -11,7 +11,7 @@ The pipeline consists of multiple stages to automate the CI/CD process for Kuber
 ### **1. Triggering the Pipeline**
 The pipeline is manually triggered using the **GitHub Actions `workflow_dispatch` event**, which requires developers to specify:
 - `application` (e.g., `backend`, `frontend`, `go-api`, `java-api`).
-- `environment` (e.g., `dev`, `staging`, `prod`).
+- `environment` (e.g., `dev`, `test`, `prod`).
 - Optional parameters like:
   - `replicas`: Number of replicas for the application.
   - `cpu_limit`: CPU limit for the application container.
