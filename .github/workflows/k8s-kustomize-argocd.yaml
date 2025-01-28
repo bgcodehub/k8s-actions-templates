@@ -14,7 +14,7 @@ on:
       replicas:
         description: "Number of replicas for the application"
         required: false
-        default: 1
+        default: "1"
       cpu_limit:
         description: "CPU limit for the application container (e.g., 500m, 1)"
         required: false
@@ -23,6 +23,18 @@ on:
         description: "Memory limit for the application container (e.g., 256Mi, 512Mi)"
         required: false
         default: "256Mi"
+      env_vars:
+        description: "Environment variables as JSON (e.g., '[{\"name\": \"ENV_KEY\", \"value\": \"value\"}, {\"name\": \"DEBUG\", \"value\": \"true\"}]')"
+        required: false
+        default: "[]"
+      hpa_enabled:
+        description: "Enable Horizontal Pod Autoscaler (true/false)"
+        required: false
+        default: "false"
+      hpa_max_replicas:
+        description: "Maximum replicas for HPA"
+        required: false
+        default: "10"
 
 jobs:
   validate-commit:
@@ -69,27 +81,26 @@ jobs:
         with:
           repository: feeder-repo
           path: feeder-manifests
-      - name: Generate ConfigMap for Kustomize (if patches exist)
-        if: ${{ inputs.application == 'go-api' || inputs.application == 'java-api' }}
+      - name: Generate Kustomize Overlay
         run: |
-          cat <<EOF > feeder-manifests/${{ github.event.inputs.application }}/generated-config.yaml
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: app-config
-          data:
-            CPU_LIMIT: "${{ github.event.inputs.cpu_limit }}"
-            MEMORY_LIMIT: "${{ github.event.inputs.memory_limit }}"
-            REPLICAS: "${{ github.event.inputs.replicas }}"
-          EOF
+          chmod +x .github/scripts/generate-patch.sh
+          .github/scripts/generate-patch.sh \
+          ${{ github.event.inputs.application }} \
+          ${{ github.event.inputs.environment }} \
+          ${{ github.event.inputs.replicas }} \
+          ${{ github.event.inputs.cpu_limit }} \
+          ${{ github.event.inputs.memory_limit }} \
+          '${{ github.event.inputs.env_vars }}' \
+          ${{ github.event.inputs.hpa_enabled }} \
+          ${{ github.event.inputs.hpa_max_replicas }}
       - name: Apply Kustomize Overlays
         run: |
           mkdir -p customized-manifests
-          kustomize build feeder-manifests/${{ github.event.inputs.application }} > customized-manifests/deployment.yaml
+          kustomize build feeder-manifests/${{ github.event.inputs.application }}/overlays/${{ github.event.inputs.environment }} > customized-manifests/deployment.yaml
       - name: Validate Manifests
         run: |
           kubeval customized-manifests/deployment.yaml
-      - name: Push Manifests to Atlas
+      - name: Push Manifests to Feeder Repo
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
