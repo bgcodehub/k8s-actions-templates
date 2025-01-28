@@ -1,0 +1,76 @@
+name: Kustomize Overlay Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      application:
+        description: "Select application type (e.g., go-api, java-api, python-api)"
+        required: true
+        default: "go-api"
+      replicas:
+        description: "Number of replicas"
+        required: false
+        default: "1"
+      cpu_limit:
+        description: "CPU limit (e.g., 500m, 1)"
+        required: false
+        default: "500m"
+      memory_limit:
+        description: "Memory limit (e.g., 256Mi, 512Mi)"
+        required: false
+        default: "256Mi"
+      env_vars:
+        description: "Environment variables in JSON format (e.g., '[{\"name\": \"ENV\", \"value\": \"dev\"}]')"
+        required: false
+        default: "[]"
+
+jobs:
+  test-kustomize:
+    name: Test Kustomize Overlays from External Repo
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout This Repository
+        uses: actions/checkout@v3
+
+      - name: Clone Kustomize Base Repository (External)
+        run: |
+          git clone https://github.com/bgcodehub/kustomize-application.git kustomize-base
+          ls -R kustomize-base
+
+      - name: Set Up Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Generate Overlay Configuration
+        run: |
+          mkdir -p kustomize-base/${{ github.event.inputs.application }}/overlays/test
+
+          cat <<EOF > kustomize-base/${{ github.event.inputs.application }}/overlays/test/patch.yaml
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: deployment
+          spec:
+            replicas: ${{ github.event.inputs.replicas }}
+            template:
+              spec:
+                containers:
+                - name: application-container
+                  resources:
+                    limits:
+                      cpu: "${{ github.event.inputs.cpu_limit }}"
+                      memory: "${{ github.event.inputs.memory_limit }}"
+                  env:
+          EOF
+
+          # Append environment variables dynamically
+          echo '${{ github.event.inputs.env_vars }}' | jq -r '.[] | "                  - name: \(.name)\n                    value: \(.value)"' >> kustomize-base/${{ github.event.inputs.application }}/overlays/test/patch.yaml
+
+      - name: Run Kustomize Build
+        run: |
+          kustomize build kustomize-base/${{ github.event.inputs.application }}/overlays/test
+
+      - name: Validate Kustomize Output
+        run: |
+          kustomize build kustomize-base/${{ github.event.inputs.application }}/overlays/test | kubeval
