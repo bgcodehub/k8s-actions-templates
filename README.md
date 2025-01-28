@@ -1,66 +1,82 @@
 ### **Pipeline Overview and Documentation**
 
-This updated pipeline fully supports applications with and without patches (`go-api`, `java-api`, etc.) and streamlines Kubernetes deployments by automating validation, building, manifest management, and deployment. Below is a **detailed explanation and documentation** to help developers understand and use the pipeline effectively.
+This updated pipeline dynamically supports Kubernetes overlays for applications with and without patches (`go-api`, `java-api`, etc.), automates manifest customization at runtime, and streamlines deployments through GitHub Actions. Below is the **updated explanation and documentation** to reflect recent enhancements.
 
 ---
 
 ## **What Does the Pipeline Do?**
 
-The pipeline consists of multiple stages to automate the CI/CD process for Kubernetes deployments. Here's how it works:
+The pipeline automates the CI/CD process for Kubernetes deployments, ensuring consistency, reliability, and flexibility through dynamic input customization. Here's how it works:
+
+---
 
 ### **1. Triggering the Pipeline**
-The pipeline is manually triggered using the **GitHub Actions `workflow_dispatch` event**, which requires developers to specify:
+The pipeline is manually triggered using the **GitHub Actions `workflow_dispatch` event**, which allows developers to specify:
 - `application` (e.g., `backend`, `frontend`, `go-api`, `java-api`).
 - `environment` (e.g., `dev`, `test`, `prod`).
-- Optional parameters like:
+- Additional customizable parameters:
   - `replicas`: Number of replicas for the application.
   - `cpu_limit`: CPU limit for the application container.
   - `memory_limit`: Memory limit for the application container.
+  - `env_vars`: Environment variables as JSON (e.g., `[{ "name": "ENV_KEY", "value": "value" }]`).
+  - `hpa_enabled`: Enable Horizontal Pod Autoscaler (`true`/`false`).
+  - `hpa_max_replicas`: Maximum replicas for HPA.
+
+**What’s New?** 
+- Developers can now fully customize Kubernetes overlays at runtime, removing the need to manually edit YAML files.
+- Supports advanced features like Horizontal Pod Autoscaling (HPA) for scalable deployments.
+
+---
 
 ### **2. Validate Commit Messages (`validate-commit`)**
 This stage:
 - Ensures commit messages follow a consistent format (e.g., `feat:`, `fix:`).
 - Prevents merging of poorly documented commits into the main branch.
-- **Why It Helps**: Improves collaboration and code traceability.
+  
+**Why It Helps**: Improves collaboration and code traceability.
 
 ---
 
 ### **3. Build and Test Application (`build-and-test`)**
 This stage:
-1. **Builds a Docker image** of the application based on the provided code.
+1. **Builds a Docker image** of the application.
 2. **Runs application tests** inside a Docker container to ensure stability.
-3. **Pushes the Docker image** to an Artifactory registry for use in deployment.
+3. **Pushes the Docker image** to an Artifactory registry for deployment.
 
 **Why It Helps**:
-- Eliminates manual Docker image builds and pushes.
 - Ensures code quality through automated testing.
+- Simplifies Docker image management.
 
 ---
 
 ### **4. Manage Kubernetes Manifests (`manage-manifests`)**
-This is the most critical stage for Kubernetes deployment:
+This is the heart of the pipeline and includes the following:
+
 1. **Fetches the feeder repository**:
-   - The feeder repo contains the base Kubernetes manifests and the `kustomization.yaml` files.
-2. **Handles ConfigMap Generation**:
-   - For `go-api` and `java-api`, it dynamically generates a ConfigMap (`generated-config.yaml`) using the values provided in the pipeline (e.g., `cpu_limit`, `memory_limit`).
-   - Applications without patches skip this step.
+   - Contains the base Kubernetes manifests and `kustomization.yaml` files.
+
+2. **Dynamic YAML Generation**:
+   - Uses a helper script (`generate-patch.sh`) to generate environment-specific Kubernetes overlays dynamically based on pipeline inputs.
+   - Supports customization of replicas, resource limits, environment variables, and HPA.
+
 3. **Applies Kustomize Overlays**:
-   - Combines the base manifests, patches, and ConfigMap to generate environment-specific Kubernetes manifests.
+   - Combines base manifests, patches, and runtime inputs into a single deployment manifest for the specified environment.
+
 4. **Validates the Manifests**:
-   - Uses `kubeval` to ensure the generated manifests are valid.
+   - Uses `kubeval` to ensure the generated manifests are valid and conform to Kubernetes standards.
+
 5. **Pushes the Manifests**:
-   - Commits and pushes the generated manifests to the Atlas repository (watched by ArgoCD).
+   - Commits and pushes the customized manifests to the feeder repository, which is watched by ArgoCD.
 
 **Why It Helps**:
-- Automates the generation of customized Kubernetes manifests.
-- Prevents human errors in Kubernetes configurations.
-- Saves developers from manually editing YAML files for each environment.
+- Automates the generation of Kubernetes manifests with environment-specific configurations.
+- Reduces manual errors and saves time by eliminating the need for YAML editing.
 
 ---
 
 ### **5. Trigger ArgoCD Deployment (`trigger-argocd`)**
 This stage:
-1. Notifies ArgoCD to sync the latest manifests from the Atlas repository.
+1. Triggers ArgoCD to sync the latest manifests from the feeder repository.
 2. Ensures the Kubernetes cluster is updated with the new deployment.
 
 **Why It Helps**:
@@ -71,13 +87,13 @@ This stage:
 
 ### **6. Post-Deployment Verification (`post-deployment`)**
 This stage:
-1. Pulls the deployed Docker image from Artifactory to ensure it matches expectations.
-2. Runs smoke tests to verify that the application is running correctly in the cluster.
+1. Pulls the deployed Docker image from Artifactory to verify deployment consistency.
+2. Runs smoke tests to validate the application is running correctly in the cluster.
 3. Sends a Slack notification to the team about the deployment status.
 
 **Why It Helps**:
 - Provides automated validation of deployments.
-- Notifies developers immediately of success or failure.
+- Keeps the team informed of deployment results.
 
 ---
 
@@ -94,9 +110,9 @@ Developers had to:
 
 ### **With the Pipeline**
 - **Automated**: All steps are automated, ensuring speed, accuracy, and consistency.
-- **Dynamic Configurations**: Developers simply provide input parameters, and the pipeline handles the rest.
+- **Dynamic Configurations**: Developers provide input parameters, and the pipeline handles the rest.
 - **Error Prevention**: Validations at every step catch issues early, saving debugging time.
-- **Consistency**: Every deployment follows the same standardized process, eliminating inconsistencies.
+- **Scalability**: Supports advanced features like HPA for production workloads.
 
 ---
 
@@ -126,6 +142,9 @@ Developers had to:
      - `replicas`: Specify the number of replicas (default: 1).
      - `cpu_limit`: Specify the CPU limit (default: 500m).
      - `memory_limit`: Specify the memory limit (default: 256Mi).
+     - `env_vars`: Add environment variables in JSON format.
+     - `hpa_enabled`: Enable HPA (`true`/`false`).
+     - `hpa_max_replicas`: Specify the maximum replicas for HPA (default: 10).
 
 ---
 
@@ -142,9 +161,9 @@ Developers had to:
 
 ## **Future Improvements**
 - **Error Reporting**: Enhance Slack notifications with detailed error logs.
-- **Environment Overrides**: Allow overrides for environment-specific configurations in the feeder repository.
+- **Environment Overrides**: Allow developers to override default environment settings directly in the feeder repository.
 - **Auto-Rollback**: Add functionality to revert deployments if smoke tests fail.
 
 ---
 
-This pipeline drastically reduces manual work for developers, ensures consistent deployments, and provides immediate feedback, making it an indispensable tool for your team. Let me know if you'd like further enhancements or explanations! 🚀
+This updated pipeline empowers developers with flexible and automated Kubernetes deployment capabilities, minimizing manual effort while ensuring reliability. 🚀
