@@ -19,6 +19,10 @@ on:
         description: "Memory limit (e.g., 256Mi, 512Mi)"
         required: false
         default: "256Mi"
+      env_vars:
+        description: "Environment variables in JSON format (e.g., '[{\"name\": \"ENV\", \"value\": \"dev\"}]')"
+        required: false
+        default: "[]"
 
 jobs:
   test-kustomize:
@@ -40,25 +44,28 @@ jobs:
 
       - name: Generate Patch Configuration
         run: |
-          PATCH_PATH="kustomize-base/${{ github.event.inputs.application }}/patches"
-          mkdir -p $PATCH_PATH
+          mkdir -p kustomize-base/${{ github.event.inputs.application }}/patches
 
-          cat <<EOF > $PATCH_PATH/patch.yaml
+          cat <<EOF > kustomize-base/${{ github.event.inputs.application }}/patches/deploy.yaml
           apiVersion: apps/v1
           kind: Deployment
           metadata:
-            name: my-app
+            name: deployment
           spec:
             replicas: ${{ github.event.inputs.replicas }}
             template:
               spec:
                 containers:
-                - name: my-app
+                - name: application-container
                   resources:
                     limits:
                       cpu: "${{ github.event.inputs.cpu_limit }}"
                       memory: "${{ github.event.inputs.memory_limit }}"
+                  env:
           EOF
+
+          # Append environment variables dynamically
+          echo '${{ github.event.inputs.env_vars }}' | jq -r '.[] | "                  - name: \(.name)\n                    value: \(.value)"' >> kustomize-base/${{ github.event.inputs.application }}/patches/deploy.yaml
 
       - name: Debug - Check Generated Patch Files
         run: |
