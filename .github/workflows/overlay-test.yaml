@@ -67,9 +67,19 @@ jobs:
           # Append environment variables dynamically
           echo '${{ github.event.inputs.env_vars }}' | jq -r '.[] | "                  - name: \(.name)\n                    value: \(.value)"' >> kustomize-base/${{ github.event.inputs.application }}/overlays/test/patch.yaml
 
+      - name: Debug - Check Generated Overlay Files
+        run: |
+          echo "Checking overlay directory contents..."
+          ls -R kustomize-base/${{ github.event.inputs.application }}/overlays/test/
+
       - name: Run Kustomize Build
         run: |
-          kustomize build kustomize-base/${{ github.event.inputs.application }}/overlays/test
+          if [ -f kustomize-base/${{ github.event.inputs.application }}/overlays/test/kustomization.yaml ]; then
+            kustomize build kustomize-base/${{ github.event.inputs.application }}/overlays/test
+          else
+            echo "❌ ERROR: kustomization.yaml not found in overlays/test. Exiting."
+            exit 1
+          fi
 
       - name: Validate Kustomize Output
         run: |
