@@ -19,10 +19,6 @@ on:
         description: "Memory limit (e.g., 256Mi, 512Mi)"
         required: false
         default: "256Mi"
-      env_vars:
-        description: "Environment variables in JSON format (e.g., '[{\"name\": \"ENV\", \"value\": \"dev\"}]')"
-        required: false
-        default: "[]"
 
 jobs:
   test-kustomize:
@@ -42,44 +38,37 @@ jobs:
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
 
-      - name: Generate Overlay Configuration
+      - name: Generate Patch Configuration
         run: |
-          mkdir -p kustomize-base/${{ github.event.inputs.application }}/overlays/test
+          PATCH_PATH="kustomize-base/${{ github.event.inputs.application }}/patches"
+          mkdir -p $PATCH_PATH
 
-          cat <<EOF > kustomize-base/${{ github.event.inputs.application }}/overlays/test/patch.yaml
+          cat <<EOF > $PATCH_PATH/patch.yaml
           apiVersion: apps/v1
           kind: Deployment
           metadata:
-            name: deployment
+            name: my-app
           spec:
             replicas: ${{ github.event.inputs.replicas }}
             template:
               spec:
                 containers:
-                - name: application-container
+                - name: my-app
                   resources:
                     limits:
                       cpu: "${{ github.event.inputs.cpu_limit }}"
                       memory: "${{ github.event.inputs.memory_limit }}"
-                  env:
           EOF
 
-          # Append environment variables dynamically
-          echo '${{ github.event.inputs.env_vars }}' | jq -r '.[] | "                  - name: \(.name)\n                    value: \(.value)"' >> kustomize-base/${{ github.event.inputs.application }}/overlays/test/patch.yaml
-
-      - name: Copy kustomization.yaml to Overlays
+      - name: Debug - Check Generated Patch Files
         run: |
-          cp kustomize-base/${{ github.event.inputs.application }}/kustomization.yaml kustomize-base/${{ github.event.inputs.application }}/overlays/test/kustomization.yaml
-
-      - name: Debug - Check Generated Overlay Files
-        run: |
-          echo "Checking overlay directory contents..."
-          ls -R kustomize-base/${{ github.event.inputs.application }}/overlays/test/
+          echo "Checking patch directory contents..."
+          ls -R kustomize-base/${{ github.event.inputs.application }}/patches
 
       - name: Run Kustomize Build
         run: |
-          kustomize build kustomize-base/${{ github.event.inputs.application }}/overlays/test
+          kustomize build kustomize-base/${{ github.event.inputs.application }}/patches
 
       - name: Validate Kustomize Output
         run: |
-          kustomize build kustomize-base/${{ github.event.inputs.application }}/overlays/test | kubeval
+          kustomize build kustomize-base/${{ github.event.inputs.application }}/patches | kubeval
