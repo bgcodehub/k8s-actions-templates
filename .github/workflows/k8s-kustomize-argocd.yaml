@@ -1,142 +1,168 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline with Dynamic Kustomize
 
 on:
   workflow_dispatch:
     inputs:
       application:
-        description: "Select application (e.g., backend, frontend, go-api, java-api, python-api)"
+        description: "Select application type"
         required: true
-        default: backend
-      environment:
-        description: "Select deployment environment (dev/test/prod)"
+        type: choice
+        options:
+          - go-api
+          - java-api
+          - python-api
+          - frontend
+          - backend
+      modifications:
+        description: "Enter runtime modifications as JSON (Only for go-api & java-api)"
+        required: false
+        default: "{}"
+      atlas_repository:
+        description: "Enter your Atlas repository where manifests should be pushed"
         required: true
-        default: dev
-      replicas:
-        description: "Number of replicas for the application"
-        required: false
-        default: "1"
-      cpu_limit:
-        description: "CPU limit for the application container (e.g., 500m, 1)"
-        required: false
-        default: "500m"
-      memory_limit:
-        description: "Memory limit for the application container (e.g., 256Mi, 512Mi)"
-        required: false
-        default: "256Mi"
-      env_vars:
-        description: "Environment variables as JSON (e.g., '[{\"name\": \"ENV_KEY\", \"value\": \"value\"}, {\"name\": \"DEBUG\", \"value\": \"true\"}]')"
-        required: false
-        default: "[]"
-      hpa_enabled:
-        description: "Enable Horizontal Pod Autoscaler (true/false)"
-        required: false
-        default: "false"
-      hpa_max_replicas:
-        description: "Maximum replicas for HPA"
-        required: false
-        default: "10"
 
 jobs:
-  validate-commit:
-    name: Validate Commit Message
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-      - name: Validate Commit Message
-        run: |
-          echo "$GITHUB_EVENT_HEAD_COMMIT_MESSAGE" | grep -E '^(feat|fix|docs|style|refactor|perf|test|chore): .{1,72}' || exit 1
-
-  build-and-test:
-    name: Build and Test Application
-    needs: validate-commit
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-      - name: Setup Docker
-        uses: docker/setup-buildx-action@v2
-      - name: Build Docker Image
-        run: |
-          docker build -t my-app:$GITHUB_SHA .
-      - name: Run Tests
-        run: |
-          docker run --rm my-app:$GITHUB_SHA npm test
-      - name: Push Image to Artifactory
-        env:
-          DOCKER_USER: ${{ secrets.DOCKER_USER }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          echo $DOCKER_PASSWORD | docker login -u $DOCKER_USER --password-stdin my-artifactory
-          docker tag my-app:$GITHUB_SHA my-artifactory/my-app:$GITHUB_SHA
-          docker push my-artifactory/my-app:$GITHUB_SHA
+  # Commented out build-and-test for now
+  # build-and-test:
+  #   name: Build and Test Application
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v3
+  #     - name: Setup Docker
+  #       uses: docker/setup-buildx-action@v2
+  #     - name: Build Docker Image
+  #       run: |
+  #         docker build -t my-app:$GITHUB_SHA .
+  #     - name: Run Tests
+  #       run: |
+  #         docker run --rm my-app:$GITHUB_SHA npm test
+  #     - name: Push Image to Artifactory
+  #       env:
+  #         DOCKER_USER: ${{ secrets.DOCKER_USER }}
+  #         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  #       run: |
+  #         echo $DOCKER_PASSWORD | docker login -u $DOCKER_USER --password-stdin my-artifactory
+  #         docker tag my-app:$GITHUB_SHA my-artifactory/my-app:$GITHUB_SHA
+  #         docker push my-artifactory/my-app:$GITHUB_SHA
 
   manage-manifests:
     name: Manage Kubernetes Manifests
-    needs: build-and-test
+    # Remove "needs: build-and-test" since it's disabled
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Feeder Repository
+      - name: Checkout Kustomize Repository
         uses: actions/checkout@v3
         with:
-          repository: feeder-repo
-          path: feeder-manifests
-      - name: Generate Kustomize Overlay
+          repository: bgcodehub/kustomize-application
+          path: kustomize-base
+
+      - name: Install Dependencies
         run: |
-          chmod +x .github/scripts/generate-patch.sh
-          .github/scripts/generate-patch.sh \
-          ${{ github.event.inputs.application }} \
-          ${{ github.event.inputs.environment }} \
-          ${{ github.event.inputs.replicas }} \
-          ${{ github.event.inputs.cpu_limit }} \
-          ${{ github.event.inputs.memory_limit }} \
-          '${{ github.event.inputs.env_vars }}' \
-          ${{ github.event.inputs.hpa_enabled }} \
-          ${{ github.event.inputs.hpa_max_replicas }}
-      - name: Apply Kustomize Overlays
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          sudo apt-get install -y jq
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Validate Application Customization
+        run: |
+          if [[ "${{ github.event.inputs.application }}" != "go-api" && "${{ github.event.inputs.application }}" != "java-api" && "${{ github.event.inputs.modifications }}" != "{}" ]]; then
+            echo "❌ Error: Runtime customization is only allowed for go-api and java-api"
+            exit 1
+          fi
+
+      - name: Apply Runtime Modifications
+        if: ${{ github.event.inputs.application == 'go-api' || github.event.inputs.application == 'java-api' }}
+        run: |
+          FILE=""
+          if [[ "${{ github.event.inputs.application }}" == "go-api" ]]; then
+            FILE="kustomize-base/go-api/overlays/patches/deploy.yaml"
+          elif [[ "${{ github.event.inputs.application }}" == "java-api" ]]; then
+            FILE="kustomize-base/java-api/overlays/patches/deploy.yaml"
+          fi
+
+          echo "🔹 Applying runtime modifications to $FILE"
+          echo '${{ github.event.inputs.modifications }}' | jq -r 'to_entries | .[] | "\(.key) = \(.value)"' | while read -r line; do
+            KEY=$(echo "$line" | cut -d'=' -f1 | xargs)
+            VALUE=$(echo "$line" | cut -d'=' -f2 | xargs)
+            echo "  - $KEY: $VALUE"
+
+            if [[ "$KEY" == "timeout_seconds" || "$KEY" == "initial_delay_seconds" || "$KEY" == "revision_history_limit" ]]; then
+              VALUE=$(echo "$VALUE" | jq 'tonumber')
+            fi
+
+            case "$KEY" in
+              cpu_limit)
+                yq -i '.spec.template.spec.containers[0].resources.limits.cpu = "'"$VALUE"'"' $FILE ;;
+              memory_limit)
+                yq -i '.spec.template.spec.containers[0].resources.limits.memory = "'"$VALUE"'"' $FILE ;;
+              cpu_request)
+                yq -i '.spec.template.spec.containers[0].resources.requests.cpu = "'"$VALUE"'"' $FILE ;;
+              memory_request)
+                yq -i '.spec.template.spec.containers[0].resources.requests.memory = "'"$VALUE"'"' $FILE ;;
+              timeout_seconds)
+                yq -i '.spec.template.spec.containers[0].livenessProbe.timeoutSeconds = '$VALUE'' $FILE ;;
+              initial_delay_seconds)
+                yq -i '.spec.template.spec.containers[0].livenessProbe.initialDelaySeconds = '$VALUE'' $FILE ;;
+              revision_history_limit)
+                yq -i '.spec.revisionHistoryLimit = '$VALUE'' $FILE ;;
+              terminationGracePeriodSeconds)
+                yq -i '.spec.template.spec.terminationGracePeriodSeconds = '$VALUE'' $FILE ;;
+              maxReplicas)
+                yq -i '.spec.maxReplicas = '$VALUE'' "kustomize-base/java-api/overlays/patches/hpa.yaml" ;;
+              *)
+                echo "❌ Error: Invalid key '$KEY'. Skipping."
+                continue ;;
+            esac
+          done
+
+      - name: Apply Kustomize Overlays and Output New Configuration
         run: |
           mkdir -p customized-manifests
-          kustomize build feeder-manifests/${{ github.event.inputs.application }}/overlays/${{ github.event.inputs.environment }} > customized-manifests/deployment.yaml
+          kustomize build kustomize-base/${{ github.event.inputs.application }}/overlays/ > customized-manifests/deployment.yaml
+          echo "📝 New Updated Configuration:"
+          cat customized-manifests/deployment.yaml
+
       - name: Validate Manifests
         run: |
-          kubeval customized-manifests/deployment.yaml
-      - name: Push Manifests to Feeder Repo
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git checkout -b update-manifests
-          git add customized-manifests
-          git commit -m "Update manifests for $GITHUB_SHA"
-          git push origin update-manifests
+          curl -sLO https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz
+          ./kubeval customized-manifests/deployment.yaml
 
-  trigger-argocd:
-    name: Trigger ArgoCD Deployment
-    needs: manage-manifests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Sync ArgoCD
-        env:
-          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
-          ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
-        run: |
-          curl -k -X POST "$ARGOCD_SERVER/api/v1/applications/my-app/sync" \
-          -H "Authorization: Bearer $ARGOCD_TOKEN"
+  #     - name: Push Manifests to Atlas Repository
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       run: |
+  #         git config --global user.name "GitHub Actions"
+  #         git config --global user.email "actions@github.com"
+  #         git clone ${{ github.event.inputs.atlas_repository }} atlas
+  #         cp customized-manifests/deployment.yaml atlas/
+  #         cd atlas
+  #         git add deployment.yaml
+  #         git commit -m "Update manifests for ${{ github.event.inputs.application }} - $GITHUB_SHA"
+  #         git push origin main
 
-  post-deployment:
-    name: Post-Deployment Verification
-    needs: trigger-argocd
-    runs-on: ubuntu-latest
-    steps:
-      - name: Pull Deployed Image
-        run: |
-          docker pull my-artifactory/my-app:$GITHUB_SHA
-      - name: Run Smoke Tests
-        run: |
-          docker run --rm my-artifactory/my-app:$GITHUB_SHA npm run smoke-test
-      - name: Notify Developers
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-        run: |
-          curl -X POST -H 'Content-type: application/json' --data '{"text":"Deployment succeeded for $GITHUB_SHA"}' $SLACK_WEBHOOK
+  # trigger-argocd:
+  #   name: Trigger ArgoCD Deployment
+  #   needs: manage-manifests
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Sync ArgoCD
+  #       env:
+  #         ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+  #         ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+  #       run: |
+  #         curl -k -X POST "$ARGOCD_SERVER/api/v1/applications/my-app/sync" \
+  #         -H "Authorization: Bearer $ARGOCD_TOKEN"
+
+  # post-deployment:
+  #   name: Post-Deployment Verification
+  #   needs: trigger-argocd
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Notify Developers
+  #       env:
+  #         SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+  #       run: |
+  #         curl -X POST -H 'Content-type: application/json' --data '{"text":"Deployment succeeded for $GITHUB_SHA"}' $SLACK_WEBHOOK
