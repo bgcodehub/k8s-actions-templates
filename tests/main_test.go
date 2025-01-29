@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHomeHandler(t *testing.T) {
@@ -13,7 +15,6 @@ func TestHomeHandler(t *testing.T) {
 	homeHandler(w, req)
 
 	resp := w.Result()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status OK, got %v", resp.StatusCode)
-	}
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "Expected status OK")
 }
