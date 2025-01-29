@@ -1,169 +1,126 @@
-### **Pipeline Overview and Documentation**
+# CI/CD Pipeline with Dynamic Kustomize
 
-This updated pipeline dynamically supports Kubernetes overlays for applications with and without patches (`go-api`, `java-api`, etc.), automates manifest customization at runtime, and streamlines deployments through GitHub Actions. Below is the **updated explanation and documentation** to reflect recent enhancements.
+## Overview
+This pipeline is designed to automate the deployment of Kubernetes manifests while allowing developers to apply runtime modifications dynamically. It integrates with [Kustomize](https://github.com/kubernetes-sigs/kustomize) to generate overlays and deploy configurations, enabling a flexible and robust continuous deployment system.
 
----
+## Features
+- **Select Application Type**: Supports multiple application types (go-api, java-api, python-api, frontend, backend).
+- **Dynamic Modifications**: Allows runtime modifications for `go-api` and `java-api` without manually editing YAML files.
+- **Containerized Deployment** (future step): Supports Docker image building, testing, and pushing.
+- **Customizable Deployment**: Uses Kustomize to build and validate Kubernetes manifests.
+- **Manifest Validation**: Ensures generated Kubernetes manifests are syntactically correct.
+- **Integration with Atlas Repository** (future step): Pushes the modified configurations to a specified Atlas repository for deployment.
+- **ArgoCD Integration** (future step): Syncs deployments automatically with ArgoCD.
 
-## **What Does the Pipeline Do?**
+## Workflow Dispatch Inputs
+| Input Name         | Description                                        | Required | Default |
+|--------------------|----------------------------------------------------|----------|---------|
+| `application`      | Select application type (e.g., go-api, backend).   | ✅        | N/A     |
+| `modifications`    | Enter runtime modifications as JSON (for go-api & java-api only). | ❌ | `{}` |
+| `atlas_repository` | The Atlas repository where manifests should be pushed. | ✅ | N/A |
 
-The pipeline automates the CI/CD process for Kubernetes deployments, ensuring consistency, reliability, and flexibility through dynamic input customization. Here's how it works:
+## Supported Runtime Modifications
+### `go-api`
+| Key                     | Description                                    |
+|-------------------------|------------------------------------------------|
+| `cpu_limit`             | CPU limit for the container (e.g., "2300m").  |
+| `memory_limit`          | Memory limit for the container (e.g., "1Gi"). |
+| `cpu_request`           | CPU request for the container.                 |
+| `memory_request`        | Memory request for the container.              |
+| `timeout_seconds`       | Liveness probe timeout.                        |
+| `initial_delay_seconds` | Liveness probe initial delay.                  |
+| `revision_history_limit` | Number of revision histories to keep.         |
 
----
+### `java-api`
+| Key                              | Description                                      |
+|----------------------------------|--------------------------------------------------|
+| `termination_grace_period_seconds` | Termination grace period for container shutdown. |
+| `max_replicas`                   | Maximum replicas for Horizontal Pod Autoscaler. |
 
-### **1. Triggering the Pipeline**
-The pipeline is manually triggered using the **GitHub Actions `workflow_dispatch` event**, which allows developers to specify:
-- `application` (e.g., `backend`, `frontend`, `go-api`, `java-api`).
-- `environment` (e.g., `dev`, `test`, `prod`).
-- Additional customizable parameters:
-  - `replicas`: Number of replicas for the application.
-  - `cpu_limit`: CPU limit for the application container.
-  - `memory_limit`: Memory limit for the application container.
-  - `env_vars`: Environment variables as JSON (e.g., `[{ "name": "ENV_KEY", "value": "value" }]`).
-  - `hpa_enabled`: Enable Horizontal Pod Autoscaler (`true`/`false`).
-  - `hpa_max_replicas`: Maximum replicas for HPA.
+## Jobs and Steps
 
-**What’s New?** 
-- Developers can now fully customize Kubernetes overlays at runtime, removing the need to manually edit YAML files.
-- Supports advanced features like Horizontal Pod Autoscaling (HPA) for scalable deployments.
+### 1. **Build and Test Application** (future step)
+This job builds and tests the application using Docker.
 
----
+#### **Step 1: Checkout Code**
+- Pulls the latest version of the repository.
 
-### **2. Validate Commit Messages (`validate-commit`)**
-This stage:
-- Ensures commit messages follow a consistent format (e.g., `feat:`, `fix:`).
-- Prevents merging of poorly documented commits into the main branch.
-  
-**Why It Helps**: Improves collaboration and code traceability.
+#### **Step 2: Setup Docker**
+- Installs and configures Docker Buildx for building containerized applications.
 
----
+#### **Step 3: Build Docker Image**
+- Builds a Docker image for the application using the latest commit SHA.
 
-### **3. Build and Test Application (`build-and-test`)**
-This stage:
-1. **Builds a Docker image** of the application.
-2. **Runs application tests** inside a Docker container to ensure stability.
-3. **Pushes the Docker image** to an Artifactory registry for deployment.
+#### **Step 4: Run Tests**
+- Runs containerized tests to validate the application functionality.
 
-**Why It Helps**:
-- Ensures code quality through automated testing.
-- Simplifies Docker image management.
+#### **Step 5: Push Image to Artifactory**
+- Logs in to the Docker registry and pushes the built image.
 
----
+### 2. **Manage Kubernetes Manifests**
+This job handles everything related to managing Kubernetes manifests, applying runtime modifications, and validating the generated configurations.
 
-### **4. Manage Kubernetes Manifests (`manage-manifests`)**
-This is the heart of the pipeline and includes the following:
+#### **Step 1: Checkout Kustomize Repository**
+- This step pulls the [Kustomize overlays repository](https://github.com/bgcodehub/kustomize-application) which contains the base Kubernetes configurations.
 
-1. **Fetches the feeder repository**:
-   - Contains the base Kubernetes manifests and `kustomization.yaml` files.
+#### **Step 2: Install Dependencies**
+- Installs required tools like Kustomize, `jq` (for JSON processing), `yq` (for YAML editing), and `kubeconform` (for manifest validation).
 
-2. **Dynamic YAML Generation**:
-   - Uses a helper script (`generate-patch.sh`) to generate environment-specific Kubernetes overlays dynamically based on pipeline inputs.
-   - Supports customization of replicas, resource limits, environment variables, and HPA.
+#### **Step 3: Validate Application Customization**
+- Ensures that runtime modifications are only applied to `go-api` and `java-api`. If modifications are provided for unsupported applications, the pipeline exits with an error.
 
-3. **Applies Kustomize Overlays**:
-   - Combines base manifests, patches, and runtime inputs into a single deployment manifest for the specified environment.
+#### **Step 4: Apply Runtime Modifications**
+- **Modifications are applied dynamically using `yq`** to update key values in `deploy.yaml` and `hpa.yaml`.
+- Example modifications JSON for `go-api`:
+  ```json
+  {
+    "cpu_limit": "2300m",
+    "memory_limit": "1Gi",
+    "cpu_request": "1300m",
+    "memory_request": "612Mi",
+    "timeout_seconds": 5,
+    "initial_delay_seconds": 15,
+    "revision_history_limit": 3
+  }
+  ```
+- Example modifications JSON for `java-api`:
+  ```json
+  {
+    "termination_grace_period_seconds": 60,
+    "max_replicas": 15
+  }
+  ```
 
-4. **Validates the Manifests**:
-   - Uses `kubeval` to ensure the generated manifests are valid and conform to Kubernetes standards.
+#### **Step 5: Apply Kustomize Overlays and Output New Configuration**
+- Runs `kustomize build` to generate the final Kubernetes manifests after applying modifications.
+- Outputs the generated configuration for verification.
 
-5. **Pushes the Manifests**:
-   - Commits and pushes the customized manifests to the feeder repository, which is watched by ArgoCD.
+#### **Step 6: Validate Kubernetes Manifests**
+- Uses `kubeconform` to check if the generated manifests are valid and conform to Kubernetes standards.
+- Errors occur if any field has incorrect types or syntax.
 
-**Why It Helps**:
-- Automates the generation of Kubernetes manifests with environment-specific configurations.
-- Reduces manual errors and saves time by eliminating the need for YAML editing.
+#### **Step 7: Push Manifests to Atlas Repository (Future Step - Currently Commented Out)**
+- This step clones the developer’s specified Atlas repository and commits the updated Kubernetes manifests for deployment.
 
----
+#### **Step 8: Trigger ArgoCD Deployment (Future Step - Currently Commented Out)**
+- If enabled, this step would trigger ArgoCD to sync with the updated manifests in the Atlas repository.
 
-### **5. Trigger ArgoCD Deployment (`trigger-argocd`)**
-This stage:
-1. Triggers ArgoCD to sync the latest manifests from the feeder repository.
-2. Ensures the Kubernetes cluster is updated with the new deployment.
-
-**Why It Helps**:
-- Removes the need for developers to manually trigger ArgoCD syncs.
-- Ensures deployments are consistent and reliable.
-
----
-
-### **6. Post-Deployment Verification (`post-deployment`)**
-This stage:
-1. Pulls the deployed Docker image from Artifactory to verify deployment consistency.
-2. Runs smoke tests to validate the application is running correctly in the cluster.
-3. Sends a Slack notification to the team about the deployment status.
-
-**Why It Helps**:
-- Provides automated validation of deployments.
-- Keeps the team informed of deployment results.
-
----
-
-## **How This Pipeline Saves Time and Effort**
-
-### **Before the Pipeline**
-Developers had to:
-1. Manually validate commits.
-2. Build and test Docker images locally.
-3. Edit Kubernetes manifests manually for each environment.
-4. Validate manifests and push them to a GitOps repository.
-5. Trigger ArgoCD deployments manually.
-6. Perform manual smoke tests to verify deployments.
-
-### **With the Pipeline**
-- **Automated**: All steps are automated, ensuring speed, accuracy, and consistency.
-- **Dynamic Configurations**: Developers provide input parameters, and the pipeline handles the rest.
-- **Error Prevention**: Validations at every step catch issues early, saving debugging time.
-- **Scalability**: Supports advanced features like HPA for production workloads.
+#### **Step 9: Post-Deployment Verification (Future Step - Currently Commented Out)**
+- Sends a Slack notification upon successful deployment.
 
 ---
 
-## **Step-by-Step Guide for Developers**
-
-### **Prerequisites**
-1. Ensure the application repository contains:
-   - A `Dockerfile` for building Docker images.
-   - Tests that can run inside a container (e.g., `npm test`).
-2. Confirm that the feeder repository contains:
-   - Base Kubernetes manifests and `kustomization.yaml` files.
-   - Patches folder for applications that need it (`go-api`, `java-api`).
-3. Set up the required secrets in GitHub Actions:
-   - `DOCKER_USER`, `DOCKER_PASSWORD` (Artifactory credentials).
-   - `ARGOCD_SERVER`, `ARGOCD_TOKEN` (ArgoCD access).
-   - `SLACK_WEBHOOK` (Slack notification).
-
----
-
-### **How to Trigger the Pipeline**
-1. Go to the **GitHub Actions** tab in your repository.
-2. Select the **CI/CD Pipeline** workflow.
+## How to Trigger the Pipeline
+1. Navigate to the **GitHub Actions** tab in your repository.
+2. Select the **CI/CD Pipeline with Dynamic Kustomize** workflow.
 3. Click **Run Workflow** and provide the following inputs:
-   - `application`: Choose the application (e.g., `go-api`, `java-api`, etc.).
-   - `environment`: Choose the environment (e.g., `dev`, `prod`).
-   - Optional:
-     - `replicas`: Specify the number of replicas (default: 1).
-     - `cpu_limit`: Specify the CPU limit (default: 500m).
-     - `memory_limit`: Specify the memory limit (default: 256Mi).
-     - `env_vars`: Add environment variables in JSON format.
-     - `hpa_enabled`: Enable HPA (`true`/`false`).
-     - `hpa_max_replicas`: Specify the maximum replicas for HPA (default: 10).
+   - **Application**: Choose from `go-api`, `java-api`, `python-api`, `frontend`, or `backend`.
+   - **Modifications (Optional)**: Enter runtime modifications in JSON format.
+   - **Atlas Repository**: Provide the URL of the repository where the manifests should be pushed.
 
----
+## Future Enhancements
+- **Enable ArgoCD Integration**: Once tested, the ArgoCD sync step will be uncommented.
+- **Automated Testing**: The build-and-test job will be uncommented once testing is re-enabled.
+- **Better Error Handling**: Improved handling of invalid JSON modifications.
 
-### **What Happens After Triggering**
-1. **Pipeline Execution**:
-   - The pipeline runs all stages automatically.
-   - Logs are visible in the GitHub Actions UI for each step.
-
-2. **Post-Deployment**:
-   - Check Slack for deployment success notifications.
-   - Validate the deployment manually (if needed).
-
----
-
-## **Future Improvements**
-- **Error Reporting**: Enhance Slack notifications with detailed error logs.
-- **Environment Overrides**: Allow developers to override default environment settings directly in the feeder repository.
-- **Auto-Rollback**: Add functionality to revert deployments if smoke tests fail.
-
----
-
-This updated pipeline empowers developers with flexible and automated Kubernetes deployment capabilities, minimizing manual effort while ensuring reliability. 🚀
+This pipeline provides a **scalable and flexible** approach to Kubernetes manifest management, reducing manual configuration errors and streamlining deployments. 🚀

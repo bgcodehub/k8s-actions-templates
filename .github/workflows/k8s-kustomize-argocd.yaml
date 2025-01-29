@@ -79,22 +79,26 @@ jobs:
         if: ${{ github.event.inputs.application == 'go-api' || github.event.inputs.application == 'java-api' }}
         run: |
           FILE=""
+      
+          # Determine which file to modify based on the application type
           if [[ "${{ github.event.inputs.application }}" == "go-api" ]]; then
             FILE="kustomize-base/go-api/overlays/patches/deploy.yaml"
           elif [[ "${{ github.event.inputs.application }}" == "java-api" ]]; then
             FILE="kustomize-base/java-api/overlays/patches/deploy.yaml"
           fi
-
+      
           echo "🔹 Applying runtime modifications to $FILE"
+          
+          # Read and process JSON modifications
           echo '${{ github.event.inputs.modifications }}' | jq -r 'to_entries | .[] | "\(.key) = \(.value)"' | while read -r line; do
             KEY=$(echo "$line" | cut -d'=' -f1 | xargs)
             VALUE=$(echo "$line" | cut -d'=' -f2 | xargs)
             echo "  - $KEY: $VALUE"
-
-            if [[ "$KEY" == "timeout_seconds" || "$KEY" == "initial_delay_seconds" || "$KEY" == "revision_history_limit" ]]; then
-              VALUE=$(echo "$VALUE" | jq 'tonumber')
+      
+            if [[ "$KEY" == "timeout_seconds" || "$KEY" == "initial_delay_seconds" || "$KEY" == "revision_history_limit" || "$KEY" == "termination_grace_period_seconds" || "$KEY" == "max_replicas" ]]; then
+              VALUE=$(echo "$VALUE" | jq 'tonumber')  # Convert string to number
             fi
-
+      
             case "$KEY" in
               cpu_limit)
                 yq -i '.spec.template.spec.containers[0].resources.limits.cpu = "'"$VALUE"'"' $FILE ;;
@@ -110,15 +114,17 @@ jobs:
                 yq -i '.spec.template.spec.containers[0].livenessProbe.initialDelaySeconds = '$VALUE'' $FILE ;;
               revision_history_limit)
                 yq -i '.spec.revisionHistoryLimit = '$VALUE'' $FILE ;;
-              terminationGracePeriodSeconds)
+              termination_grace_period_seconds)
                 yq -i '.spec.template.spec.terminationGracePeriodSeconds = '$VALUE'' $FILE ;;
-              maxReplicas)
+              max_replicas)
                 yq -i '.spec.maxReplicas = '$VALUE'' "kustomize-base/java-api/overlays/patches/hpa.yaml" ;;
               *)
                 echo "❌ Error: Invalid key '$KEY'. Skipping."
                 continue ;;
             esac
           done
+      
+          echo "✅ Updates completed successfully!"
 
       - name: Apply Kustomize Overlays and Output New Configuration
         run: |

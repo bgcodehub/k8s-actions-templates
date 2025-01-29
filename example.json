@@ -1,0 +1,8 @@
+{
+    "cpu_limit": "3333m",
+    "memory_limit": "1Gi",
+    "cpu_request": "222m",
+    "memory_request": "444Mi",
+    "timeout_seconds": 5,
+    "initial_delay_seconds": 15
+}
