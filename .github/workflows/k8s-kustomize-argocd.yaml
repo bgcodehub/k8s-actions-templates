@@ -22,33 +22,39 @@ on:
         required: true
 
 jobs:
-  # Commented out build-and-test for now
-  # build-and-test:
-  #   name: Build and Test Application
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout Code
-  #       uses: actions/checkout@v3
-  #     - name: Setup Docker
-  #       uses: docker/setup-buildx-action@v2
-  #     - name: Build Docker Image
-  #       run: |
-  #         docker build -t my-app:$GITHUB_SHA .
-  #     - name: Run Tests
-  #       run: |
-  #         docker run --rm my-app:$GITHUB_SHA npm test
-  #     - name: Push Image to Artifactory
-  #       env:
-  #         DOCKER_USER: ${{ secrets.DOCKER_USER }}
-  #         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-  #       run: |
-  #         echo $DOCKER_PASSWORD | docker login -u $DOCKER_USER --password-stdin my-artifactory
-  #         docker tag my-app:$GITHUB_SHA my-artifactory/my-app:$GITHUB_SHA
-  #         docker push my-artifactory/my-app:$GITHUB_SHA
+  build-and-test:
+    name: Build and Test Application
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Docker
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker Image
+        run: |
+          docker build -t my-app:$GITHUB_SHA .
+
+      - name: Login to JFrog Artifactory
+        env:
+          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+          ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}
+          ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
+        run: |
+          echo $ARTIFACTORY_PASSWORD | docker login -u $ARTIFACTORY_USER --password-stdin $ARTIFACTORY_URL
+
+      - name: Tag and Push Image to Artifactory
+        env:
+          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+        run: |
+          docker tag my-app:$GITHUB_SHA $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
+          docker push $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
+
 
   manage-manifests:
     name: Manage Kubernetes Manifests
-    # Remove "needs: build-and-test" since it's disabled
+    needs: build-and-test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Kustomize Repository
