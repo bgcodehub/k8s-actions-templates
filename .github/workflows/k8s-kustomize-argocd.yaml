@@ -64,6 +64,9 @@ jobs:
           sudo apt-get install -y jq
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
+          curl -LO https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin/
 
       - name: Validate Application Customization
         run: |
@@ -124,11 +127,9 @@ jobs:
           echo "📝 New Updated Configuration:"
           cat customized-manifests/deployment.yaml
 
-      - name: Validate Manifests
+      - name: Validate Kubernetes Manifests with Kubeconform
         run: |
-          curl -sLO https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
-          tar xf kubeval-linux-amd64.tar.gz
-          ./kubeval customized-manifests/deployment.yaml
+          kubeconform -strict -summary -ignore-missing-schemas -schema-location default customized-manifests/deployment.yaml
 
   #     - name: Push Manifests to Atlas Repository
   #       env:
