@@ -25,6 +25,8 @@ jobs:
   build-and-test:
     name: Build and Test Application
     runs-on: ubuntu-latest
+    outputs: 
+      image_url: ${{ steps.set_image.outputs.image_url }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
