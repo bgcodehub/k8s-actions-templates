@@ -1,126 +1,127 @@
 # CI/CD Pipeline with Dynamic Kustomize
 
-## Overview
-This pipeline is designed to automate the deployment of Kubernetes manifests while allowing developers to apply runtime modifications dynamically. It integrates with [Kustomize](https://github.com/kubernetes-sigs/kustomize) to generate overlays and deploy configurations, enabling a flexible and robust continuous deployment system.
+## Overview  
+This pipeline automates the **containerization, deployment, and management** of Kubernetes manifests while allowing developers to apply **runtime modifications dynamically**.
 
-## Features
-- **Select Application Type**: Supports multiple application types (go-api, java-api, python-api, frontend, backend).
-- **Dynamic Modifications**: Allows runtime modifications for `go-api` and `java-api` without manually editing YAML files.
-- **Containerized Deployment** (future step): Supports Docker image building, testing, and pushing.
-- **Customizable Deployment**: Uses Kustomize to build and validate Kubernetes manifests.
-- **Manifest Validation**: Ensures generated Kubernetes manifests are syntactically correct.
-- **Integration with Atlas Repository** (future step): Pushes the modified configurations to a specified Atlas repository for deployment.
-- **ArgoCD Integration** (future step): Syncs deployments automatically with ArgoCD.
+It integrates with:
+- **JFrog Artifactory** for **building, testing, and pushing Docker images**.
+- **Kustomize** for **managing Kubernetes manifests dynamically**.
+- **GitHub Actions Secrets** for **secure authentication**.
+- **Atlas Repository** for **storing updated Kubernetes manifests**.
 
-## Workflow Dispatch Inputs
+---
+
+## **🚀 Features**
+✅ **Build and Push Docker Images to Artifactory** *(Now Functional!)*  
+✅ **Dynamic Modifications for Kubernetes Manifests**  
+✅ **Push Manifests to Atlas Repository** *(Now Functional!)*  
+✅ **Validates Kubernetes Manifests Before Deployment**  
+🛠 **ArgoCD Auto-Sync for Deployments (Future Step)**  
+🛠 **Slack Notifications for Post-Deployment (Future Step)**  
+
+---
+
+## **🛠 Workflow Dispatch Inputs**
 | Input Name         | Description                                        | Required | Default |
 |--------------------|----------------------------------------------------|----------|---------|
 | `application`      | Select application type (e.g., go-api, backend).   | ✅        | N/A     |
 | `modifications`    | Enter runtime modifications as JSON (for go-api & java-api only). | ❌ | `{}` |
 | `atlas_repository` | The Atlas repository where manifests should be pushed. | ✅ | N/A |
 
-## Supported Runtime Modifications
-### `go-api`
-| Key                     | Description                                    |
-|-------------------------|------------------------------------------------|
-| `cpu_limit`             | CPU limit for the container (e.g., "2300m").  |
-| `memory_limit`          | Memory limit for the container (e.g., "1Gi"). |
-| `cpu_request`           | CPU request for the container.                 |
-| `memory_request`        | Memory request for the container.              |
-| `timeout_seconds`       | Liveness probe timeout.                        |
-| `initial_delay_seconds` | Liveness probe initial delay.                  |
-| `revision_history_limit` | Number of revision histories to keep.         |
+---
 
-### `java-api`
-| Key                              | Description                                      |
-|----------------------------------|--------------------------------------------------|
-| `termination_grace_period_seconds` | Termination grace period for container shutdown. |
-| `max_replicas`                   | Maximum replicas for Horizontal Pod Autoscaler. |
+## **🛠 Job Breakdown (Pipeline Flow Order)**  
 
-## Jobs and Steps
+### **1️⃣ Build and Push Docker Image (JFrog Artifactory)**
+#### ✅ **Status: Fully Working**
+This job **builds a Docker image**, runs **tests**, and **pushes it to JFrog Artifactory**.
 
-### 1. **Build and Test Application** (future step)
-This job builds and tests the application using Docker.
+#### **🔹 Steps**
+1️⃣ **Checkout Code** – Fetches the latest code from the repository.  
+2️⃣ **Setup Docker Buildx** – Enables multi-platform builds for optimized Docker images.  
+3️⃣ **Build Docker Image** – Uses the latest commit SHA to tag the image.  
+4️⃣ **Login to Artifactory** – Uses **GitHub Actions Secrets** (`ARTIFACTORY_USER`, `ARTIFACTORY_PASSWORD`, `ARTIFACTORY_URL`).  
+5️⃣ **Tag and Push Image to Artifactory** – Stores the Docker image in Artifactory.  
 
-#### **Step 1: Checkout Code**
-- Pulls the latest version of the repository.
+#### **🔹 Required Secrets**
+| Secret Name           | Description |
+|----------------------|-------------|
+| `ARTIFACTORY_URL`   | Your JFrog Artifactory URL (e.g., `your-instance.jfrog.io`). |
+| `ARTIFACTORY_USER`  | Your Artifactory username. |
+| `ARTIFACTORY_PASSWORD` | Your Artifactory API Key or Password. |
 
-#### **Step 2: Setup Docker**
-- Installs and configures Docker Buildx for building containerized applications.
-
-#### **Step 3: Build Docker Image**
-- Builds a Docker image for the application using the latest commit SHA.
-
-#### **Step 4: Run Tests**
-- Runs containerized tests to validate the application functionality.
-
-#### **Step 5: Push Image to Artifactory**
-- Logs in to the Docker registry and pushes the built image.
-
-### 2. **Manage Kubernetes Manifests**
-This job handles everything related to managing Kubernetes manifests, applying runtime modifications, and validating the generated configurations.
-
-#### **Step 1: Checkout Kustomize Repository**
-- This step pulls the [Kustomize overlays repository](https://github.com/bgcodehub/kustomize-application) which contains the base Kubernetes configurations.
-
-#### **Step 2: Install Dependencies**
-- Installs required tools like Kustomize, `jq` (for JSON processing), `yq` (for YAML editing), and `kubeconform` (for manifest validation).
-
-#### **Step 3: Validate Application Customization**
-- Ensures that runtime modifications are only applied to `go-api` and `java-api`. If modifications are provided for unsupported applications, the pipeline exits with an error.
-
-#### **Step 4: Apply Runtime Modifications**
-- **Modifications are applied dynamically using `yq`** to update key values in `deploy.yaml` and `hpa.yaml`.
-- Example modifications JSON for `go-api`:
-  ```json
-  {
-    "cpu_limit": "2300m",
-    "memory_limit": "1Gi",
-    "cpu_request": "1300m",
-    "memory_request": "612Mi",
-    "timeout_seconds": 5,
-    "initial_delay_seconds": 15,
-    "revision_history_limit": 3
-  }
-  ```
-- Example modifications JSON for `java-api`:
-  ```json
-  {
-    "termination_grace_period_seconds": 60,
-    "max_replicas": 15
-  }
-  ```
-
-#### **Step 5: Apply Kustomize Overlays and Output New Configuration**
-- Runs `kustomize build` to generate the final Kubernetes manifests after applying modifications.
-- Outputs the generated configuration for verification.
-
-#### **Step 6: Validate Kubernetes Manifests**
-- Uses `kubeconform` to check if the generated manifests are valid and conform to Kubernetes standards.
-- Errors occur if any field has incorrect types or syntax.
-
-#### **Step 7: Push Manifests to Atlas Repository (Future Step - Currently Commented Out)**
-- This step clones the developer’s specified Atlas repository and commits the updated Kubernetes manifests for deployment.
-
-#### **Step 8: Trigger ArgoCD Deployment (Future Step - Currently Commented Out)**
-- If enabled, this step would trigger ArgoCD to sync with the updated manifests in the Atlas repository.
-
-#### **Step 9: Post-Deployment Verification (Future Step - Currently Commented Out)**
-- Sends a Slack notification upon successful deployment.
+#### **🔹 How to Find These Values in JFrog Artifactory**
+1️⃣ **Login to Artifactory** → Go to **User Profile** → Find **API Key**.  
+2️⃣ Use **"docker login" credentials** (same as the ones used for `docker login`).  
 
 ---
 
-## How to Trigger the Pipeline
-1. Navigate to the **GitHub Actions** tab in your repository.
-2. Select the **CI/CD Pipeline with Dynamic Kustomize** workflow.
-3. Click **Run Workflow** and provide the following inputs:
-   - **Application**: Choose from `go-api`, `java-api`, `python-api`, `frontend`, or `backend`.
-   - **Modifications (Optional)**: Enter runtime modifications in JSON format.
-   - **Atlas Repository**: Provide the URL of the repository where the manifests should be pushed.
+### **2️⃣ Manage Kubernetes Manifests (Kustomize)**
+#### ✅ **Status: Fully Working**
+This job applies **runtime modifications**, validates Kubernetes manifests, and pushes updated configurations to the **Atlas repository**.
 
-## Future Enhancements
-- **Enable ArgoCD Integration**: Once tested, the ArgoCD sync step will be uncommented.
-- **Automated Testing**: The build-and-test job will be uncommented once testing is re-enabled.
-- **Better Error Handling**: Improved handling of invalid JSON modifications.
+#### **🔹 Steps**
+1️⃣ **Checkout Kustomize Repository** – Fetches the base Kubernetes configurations.  
+2️⃣ **Install Dependencies** – Installs `kustomize`, `jq`, `yq`, and `kubeconform`.  
+3️⃣ **Validate Application Customization** – Ensures **only `go-api` and `java-api`** can have modifications.  
+4️⃣ **Apply Runtime Modifications** – Dynamically modifies `deploy.yaml` & `hpa.yaml` using `yq`.  
+5️⃣ **Apply Kustomize Overlays** – Generates the final Kubernetes manifests.  
+6️⃣ **Validate Kubernetes Manifests** – Ensures manifests conform to Kubernetes standards.  
+7️⃣ **Push Updated Manifests to Atlas Repository** *(Now Working! 🎉)*  
+
+#### **🔹 Example Runtime Modifications JSON**
+For `go-api`:  
+```json
+{
+  "cpu_limit": "2300m",
+  "memory_limit": "1Gi",
+  "cpu_request": "1300m",
+  "memory_request": "612Mi",
+  "timeout_seconds": 5,
+  "initial_delay_seconds": 15,
+  "revision_history_limit": 3
+}
+```
+For `java-api`:  
+```json
+{
+  "termination_grace_period_seconds": 60,
+  "max_replicas": 15
+}
+```
+
+---
+
+### **3️⃣ Push Manifests to Atlas Repository**
+#### ✅ **Status: Fully Working**
+This step **pushes the final Kubernetes manifests to the user-specified Atlas repository**.
+
+#### **🔹 Steps**
+1️⃣ **Authenticate with GitHub Token (`ATLAS_GITHUB_PAT`)**  
+2️⃣ **Clone the Atlas Repository**  
+3️⃣ **Copy Updated Kubernetes Manifests**  
+4️⃣ **Commit and Push Changes**  
+
+#### **🔹 Required Secrets**
+| Secret Name           | Description |
+|----------------------|-------------|
+| `ATLAS_GITHUB_PAT`   | Personal Access Token (PAT) for pushing changes to Atlas repository. |
+
+#### **🔹 How to Generate `ATLAS_GITHUB_PAT`**
+1️⃣ **Go to GitHub** → Navigate to **Settings** → **Developer Settings** → **Personal Access Tokens**.  
+2️⃣ Click **"Generate new token (classic)"**.  
+3️⃣ **Select Scopes**:
+   - ✅ `repo` (Full control of private repositories)
+   - ✅ `workflow` (Update GitHub Action workflows)
+   - ✅ `write:packages` (Upload packages to GitHub Package Registry)
+4️⃣ **Generate & Copy Token** → Add to **GitHub Actions Secrets** as `ATLAS_GITHUB_PAT`.  
+
+---
+
+## **🚀 Future Enhancements**
+- **Enable ArgoCD Integration** – Sync deployments automatically.  
+- **Automated Testing** – Add pre-deployment validation.  
+- **Slack Notifications** – Notify on successful deployments.  
 
 This pipeline provides a **scalable and flexible** approach to Kubernetes manifest management, reducing manual configuration errors and streamlining deployments. 🚀
+

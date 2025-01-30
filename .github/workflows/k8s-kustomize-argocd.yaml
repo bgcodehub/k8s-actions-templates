@@ -22,33 +22,39 @@ on:
         required: true
 
 jobs:
-  # Commented out build-and-test for now
-  # build-and-test:
-  #   name: Build and Test Application
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout Code
-  #       uses: actions/checkout@v3
-  #     - name: Setup Docker
-  #       uses: docker/setup-buildx-action@v2
-  #     - name: Build Docker Image
-  #       run: |
-  #         docker build -t my-app:$GITHUB_SHA .
-  #     - name: Run Tests
-  #       run: |
-  #         docker run --rm my-app:$GITHUB_SHA npm test
-  #     - name: Push Image to Artifactory
-  #       env:
-  #         DOCKER_USER: ${{ secrets.DOCKER_USER }}
-  #         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-  #       run: |
-  #         echo $DOCKER_PASSWORD | docker login -u $DOCKER_USER --password-stdin my-artifactory
-  #         docker tag my-app:$GITHUB_SHA my-artifactory/my-app:$GITHUB_SHA
-  #         docker push my-artifactory/my-app:$GITHUB_SHA
+  build-and-test:
+    name: Build and Test Application
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Docker
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker Image
+        run: |
+          docker build -t my-app:$GITHUB_SHA .
+
+      - name: Login to JFrog Artifactory
+        env:
+          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+          ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}
+          ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
+        run: |
+          echo $ARTIFACTORY_PASSWORD | docker login -u $ARTIFACTORY_USER --password-stdin $ARTIFACTORY_URL
+
+      - name: Tag and Push Image to Artifactory
+        env:
+          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+        run: |
+          docker tag my-app:$GITHUB_SHA $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
+          docker push $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
+
 
   manage-manifests:
     name: Manage Kubernetes Manifests
-    # Remove "needs: build-and-test" since it's disabled
+    needs: build-and-test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Kustomize Repository
@@ -137,18 +143,30 @@ jobs:
         run: |
           kubeconform -strict -summary -ignore-missing-schemas -schema-location default customized-manifests/deployment.yaml
 
-  #     - name: Push Manifests to Atlas Repository
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #       run: |
-  #         git config --global user.name "GitHub Actions"
-  #         git config --global user.email "actions@github.com"
-  #         git clone ${{ github.event.inputs.atlas_repository }} atlas
-  #         cp customized-manifests/deployment.yaml atlas/
-  #         cd atlas
-  #         git add deployment.yaml
-  #         git commit -m "Update manifests for ${{ github.event.inputs.application }} - $GITHUB_SHA"
-  #         git push origin main
+      - name: Push Manifests to Atlas Repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.ATLAS_GITHUB_PAT}}
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+          # Extract repository URL from input and inject GITHUB_TOKEN for authentication
+          REPO_URL=${{ github.event.inputs.atlas_repository }}
+          AUTH_REPO_URL="https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}"
+
+          # Clone using authenticated URL
+          git clone $AUTH_REPO_URL atlas
+          
+          # Copy updated Kubernetes manifests into the repo
+          cp customized-manifests/deployment.yaml atlas/
+
+          # Navigate to the Atlas repo
+          cd atlas
+
+          # Add, commit, and push changes
+          git add deployment.yaml
+          git commit -m "Update manifests for ${{ github.event.inputs.application }} - $GITHUB_SHA"
+          git push origin main
 
   # trigger-argocd:
   #   name: Trigger ArgoCD Deployment
