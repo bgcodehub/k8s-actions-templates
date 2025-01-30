@@ -51,17 +51,18 @@ jobs:
           docker tag my-app:$GITHUB_SHA $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
           docker push $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
 
-      - name: Set Image URL Output
+      - name: Store Image URL for Next Job
         id: set_image_url
         run: |
-          IMAGE_URL="${{ secrets.ARTIFACTORY_URL }}/docker-local/my-app:$GITHUB_SHA"
-          echo "IMAGE_URL=$IMAGE_URL" >> $GITHUB_ENV
-          echo "::set-output name=IMAGE_URL::$IMAGE_URL"
+          echo "IMAGE_URL=${{ env.IMAGE_URL }}" >> $GITHUB_ENV
+          echo "IMAGE_URL=${{ env.IMAGE_URL }}" >> $GITHUB_OUTPUT 
 
   manage-manifests:
     name: Manage Kubernetes Manifests
     needs: build-and-test
     runs-on: ubuntu-latest
+    env:
+      IMAGE_URL: ${{ needs.build-and-test.outputs.image_url }} 
     steps:
       - name: Checkout Kustomize Repository
         uses: actions/checkout@v3
