@@ -17,6 +17,48 @@ It integrates with:
 
 ---
 
+## **📌 Integration Instructions**
+To use this pipeline in your project, follow these steps:
+
+### **Option 1: Manually Copy the Workflow**
+1. **Create the necessary directory structure** in your repository:
+   ```sh
+   mkdir -p .github/workflows
+   ```
+2. **Create the workflow file**:
+   ```sh
+   touch .github/workflows/k8s-kustomize-argocd.yaml
+   ```
+3. **Copy and paste the contents** of the pipeline YAML into this file.
+4. **Commit and push** the changes to your repository.
+
+### **Option 2: Clone and Integrate via Git Submodules (Recommended)**
+For better maintainability and updates, you can **clone this pipeline** into your repository as a Git submodule:
+
+1. **Run the following command in your repository:**
+   ```sh
+   git submodule add <GIT_REPO_URL_OF_PIPELINE> .github/workflows/k8s-kustomize
+   ```
+2. **Ensure the submodule updates correctly:**
+   ```sh
+   git submodule update --init --recursive
+   ```
+3. This approach allows you to **pull updates** from the main pipeline repository without manually copying files.
+
+### **Final Setup: Add Secrets**
+Once the workflow is in place, add the required **GitHub Actions Secrets**:
+
+| Secret Name            | Description                                                   |
+|------------------------|---------------------------------------------------------------|
+| `ARTIFACTORY_URL`      | Your JFrog Artifactory instance URL.                          |
+| `ARTIFACTORY_USER`     | Your JFrog Artifactory username.                              |
+| `ARTIFACTORY_PASSWORD` | Your JFrog API key or password.                              |
+| `ATLAS_GITHUB_PAT`     | GitHub PAT for pushing Kubernetes manifests to Atlas.        |
+
+After setting up the workflow file and secrets, trigger the pipeline from GitHub Actions.
+
+---
+
 ## **🚀 Features**
 
 ✅ **Build and Push Docker Images to Artifactory** *(Now Functional!)*\
