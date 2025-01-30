@@ -79,7 +79,7 @@ This job applies **runtime modifications**, validates Kubernetes manifests, and 
 
 1️⃣ **Checkout Kustomize Repository** – Fetches the base Kubernetes configurations.\
 2️⃣ **Install Dependencies** – Installs `kustomize`, `jq`, `yq`, and `kubeconform`.\
-3️⃣ **Validate Application Customization** – Ensures \*\*only ****`go-api`**** and \*\***`java-api`** can have modifications.\
+3️⃣ **Validate Application Customization** – Ensures **only `go-api`** and **`java-api`** can have modifications.\
 4️⃣ **Apply Runtime Modifications** – Dynamically modifies `deploy.yaml` & `hpa.yaml` using `yq`.\
 5️⃣ **Apply Kustomize Overlays** – Generates the final Kubernetes manifests.\
 6️⃣ **Validate Kubernetes Manifests** – Ensures manifests conform to Kubernetes standards.\
@@ -120,7 +120,7 @@ This step **pushes the final Kubernetes manifests to the user-specified Atlas re
 
 #### **🔹 Steps**
 
-1️⃣ **Authenticate with GitHub Token (********`ATLAS_GITHUB_PAT`********\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*)**\
+1️⃣ **Authenticate with GitHub Token (`ATLAS_GITHUB_PAT`)**\
 2️⃣ **Clone the Atlas Repository**\
 3️⃣ **Copy Updated Kubernetes Manifests**\
 4️⃣ **Commit and Push Changes**
@@ -131,7 +131,7 @@ This step **pushes the final Kubernetes manifests to the user-specified Atlas re
 | ------------------ | -------------------------------------------------------------------- |
 | `ATLAS_GITHUB_PAT` | Personal Access Token (PAT) for pushing changes to Atlas repository. |
 
-#### \*\*🔹 How to Generate \*\***`ATLAS_GITHUB_PAT`**
+#### **🔹 How to Generate `ATLAS_GITHUB_PAT`**
 
 1️⃣ **Go to GitHub** → Navigate to **Settings** → **Developer Settings** → **Personal Access Tokens**.\
 2️⃣ Click **"Generate new token (classic)"**.\
