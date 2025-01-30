@@ -25,8 +25,6 @@ jobs:
   build-and-test:
     name: Build and Test Application
     runs-on: ubuntu-latest
-    outputs: 
-      image_url: ${{ steps.set_image.outputs.image_url }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -52,12 +50,6 @@ jobs:
         run: |
           docker tag my-app:$GITHUB_SHA $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
           docker push $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
-
-      - name: Store Image URL for Next Job
-        id: set_image_url
-        run: |
-          echo "IMAGE_URL=${{ env.IMAGE_URL }}" >> $GITHUB_ENV
-          echo "IMAGE_URL=${{ env.IMAGE_URL }}" >> $GITHUB_OUTPUT 
 
   manage-manifests:
     name: Manage Kubernetes Manifests
@@ -142,14 +134,16 @@ jobs:
           echo "✅ Updates completed successfully!"
 
       - name: Update Image in Kustomize Manifest (All Applications)
+        env:
+          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
         run: |
-          IMAGE_URL="${{ env.IMAGE_URL }}"
+          IMAGE_URL="$ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA"
           FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
 
           echo "🔹 Updating image in $FILE to $IMAGE_URL"
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
-
+          
       - name: Apply Kustomize Overlays and Output New Configuration
         run: |
           mkdir -p customized-manifests
