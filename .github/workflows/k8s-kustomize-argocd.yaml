@@ -13,6 +13,21 @@ on:
           - python-api
           - frontend
           - backend
+      aws_region:
+        description: "Select AWS Region"
+        required: true
+        type: choice
+        options:
+          - us-east-1
+          - us-west-2
+      env_name:
+        description: "Select Environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
       modifications:
         description: "Enter runtime modifications as JSON (Only for go-api & java-api)"
         required: false
@@ -132,6 +147,17 @@ jobs:
           done
       
           echo "✅ Updates completed successfully!"
+
+      - name: Update AWS_REGION and ENV_NAME in Deployment
+        run: |
+          FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
+          
+          echo "🔹 Updating AWS_REGION and ENV_NAME in $FILE"
+          
+          yq -i '.spec.template.spec.containers[0].env[0].value = "${{ github.event.inputs.aws_region }}"' $FILE
+          yq -i '.spec.template.spec.containers[0].env[1].value = "${{ github.event.inputs.env_name }}"' $FILE
+
+          echo "✅ AWS_REGION and ENV_NAME updated!"
 
       - name: Update Image in Kustomize Manifest (All Applications)
         env:
