@@ -132,6 +132,15 @@ jobs:
       
           echo "✅ Updates completed successfully!"
 
+      - name: Update Image in Kustomize Manifest (All Applications)
+        run: |
+          IMAGE_URL="${{ env.IMAGE_URL }}"
+          FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
+
+          echo "🔹 Updating image in $FILE to $IMAGE_URL"
+          yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
+          echo "✅ Image updated successfully!"
+
       - name: Apply Kustomize Overlays and Output New Configuration
         run: |
           mkdir -p customized-manifests
