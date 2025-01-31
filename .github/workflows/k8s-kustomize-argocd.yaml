@@ -256,12 +256,12 @@ jobs:
           
           find kustomize-base/${{ github.event.inputs.application }}/overlays/ -type f -name "*.yaml" | while read FILE; do
             echo "Updating namespace in: $FILE"
-
-            yq -i '(.metadata.namespace) = env(NAMESPACE)' "$FILE"
+      
+            yq -i '.metadata.namespace = env(NAMESPACE)' "$FILE"
             yq -i 'del(.spec.namespace)' "$FILE"
-            yq -i 'del(.spec.template.metadata.namespace)' "$FILE"
-            yq -i 'if .spec.namespaceSelector then .spec.namespaceSelector.matchNames = [env(NAMESPACE)] else . end' "$FILE"
-
+            yq -i 'del(.spec.template.spec.namespace)' "$FILE"
+            yq -i 'with(.spec.namespaceSelector; .matchNames = [env(NAMESPACE)] | select(. != null))' "$FILE"
+      
             echo "✅ Updated $FILE"
           done
   
