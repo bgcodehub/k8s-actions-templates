@@ -192,11 +192,11 @@ jobs:
       
           echo "✅ Updates completed successfully!"
 
-      - name: Generate Kubernetes ConfigMap with AWS Region, Environment, and Namespace
+      - name: Generate Kubernetes ConfigMap with AWS Region and Environment
         run: |
           CONFIG_DIR="kustomize-base/${{ github.event.inputs.application }}/overlays/config"
           mkdir -p "$CONFIG_DIR"
-      
+
           # Ensure ConfigMap is correctly generated as a standalone resource
           cat <<EOF > "$CONFIG_DIR/aws-configmap.yaml"
           apiVersion: v1
@@ -206,29 +206,27 @@ jobs:
           data:
             AWS_REGION: "${{ github.event.inputs.aws_region }}"
             ENV_NAME: "${{ github.event.inputs.env_name }}"
-            NAMESPACE: "${{ env.NAMESPACE }}"
           EOF
-      
+
           echo "✅ AWS ConfigMap generated at $CONFIG_DIR/aws-configmap.yaml"
 
       - name: Update Kustomization to Include ConfigMap
         run: |
           KUSTOMIZATION_FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/kustomization.yaml"
-      
+
           # Ensure ConfigMapGenerator correctly references the ConfigMap
           if ! grep -q "configMapGenerator" "$KUSTOMIZATION_FILE"; then
             echo -e "\nconfigMapGenerator:" >> "$KUSTOMIZATION_FILE"
           fi
-      
+
           # Add configMapGenerator for AWS Config (Prevent duplicate entries)
           if ! grep -q "name: aws-config" "$KUSTOMIZATION_FILE"; then
             echo "  - name: aws-config" >> "$KUSTOMIZATION_FILE"
             echo "    literals:" >> "$KUSTOMIZATION_FILE"
             echo "      - AWS_REGION=${{ github.event.inputs.aws_region }}" >> "$KUSTOMIZATION_FILE"
             echo "      - ENV_NAME=${{ github.event.inputs.env_name }}" >> "$KUSTOMIZATION_FILE"
-            echo "      - NAMESPACE=${{ env.NAMESPACE }}" >> "$KUSTOMIZATION_FILE"
           fi
-      
+
           echo "✅ Kustomization updated to include AWS ConfigMap."
 
       - name: Update Deployment to Reference ConfigMap
@@ -236,12 +234,9 @@ jobs:
           DEPLOYMENT_FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
 
           # Ensure the deployment correctly references the standalone ConfigMap
-          yq -i '.metadata.namespace = "aws-config"' $DEPLOYMENT_FILE
-          yq -i '.spec.template.metadata.namespace = "aws-config"' $DEPLOYMENT_FILE
           yq -i '.spec.template.spec.containers[0].env += [{"name": "AWS_REGION", "valueFrom": {"configMapKeyRef": {"name": "aws-config", "key": "AWS_REGION"}}}]' $DEPLOYMENT_FILE
           yq -i '.spec.template.spec.containers[0].env += [{"name": "ENV_NAME", "valueFrom": {"configMapKeyRef": {"name": "aws-config", "key": "ENV_NAME"}}}]' $DEPLOYMENT_FILE
-          yq -i '.spec.template.spec.containers[0].env += [{"name": "NAMESPACE", "valueFrom": {"configMapKeyRef": {"name": "aws-config", "key": "NAMESPACE"}}}]' $DEPLOYMENT_FILE
-      
+
           echo "✅ Deployment updated to reference ConfigMap values."
 
       - name: Update Image in Kustomize Manifest (All Applications)
@@ -254,7 +249,25 @@ jobs:
           echo "🔹 Updating image in $FILE to $IMAGE_URL"
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
-  
+
+      - name: Update Namespace in Kustomize Manifests
+        run: |
+          echo "🔹 Updating namespace in final Kubernetes manifests to: $NAMESPACE"
+      
+          find "${{ github.event.inputs.application }}/" -type f -name "*.yaml" | while read FILE; do
+            if [[ "$FILE" == *"kustomization.yaml"* ]]; then
+              echo "Skipping namespace update for $FILE..."
+              continue
+            fi
+      
+            echo "Updating namespace in: $FILE"
+      
+            # Replace default namespace with the correct one
+            yq -i '(.metadata.namespace // "default") = env(NAMESPACE)' "$FILE"
+      
+            echo "✅ Updated $FILE"
+          done
+        
       - name: Apply Kustomize Overlays and Output New Configuration
         env:
           NAMESPACE: ${{ env.NAMESPACE }}
