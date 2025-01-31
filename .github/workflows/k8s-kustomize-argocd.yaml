@@ -54,10 +54,6 @@ jobs:
           APP_NAME=$(echo "$REPO_NAME" | sed 's/-atlas$//')
           NAMESPACE="$APP_NAME"
 
-          # Use environment files instead of deprecated `set-output`
-          echo "APP_NAME=$APP_NAME" >> "$GITHUB_ENV"
-          echo "NAMESPACE=$NAMESPACE" >> "$GITHUB_ENV"
-
           echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
           echo "namespace=$NAMESPACE" >> "$GITHUB_OUTPUT"
 
