@@ -217,14 +217,13 @@ jobs:
         run: |
           kubeconform -strict -summary -ignore-missing-schemas -schema-location default "${{ github.event.inputs.application }}/deployment.yaml"
 
-      - name: Configure Git Signing for Protected Branch
+      - name: Configure Git for Unsigned Commits
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --global commit.gpgsign true
-          git config --global user.signingkey /dev/null
-          git config --global gpg.program true
-  
+          git config --global commit.gpgsign false
+          git config --global gpg.program ""
+
       - name: Push Manifests to Atlas Repository
         env:
           GITHUB_TOKEN: ${{ secrets.ATLAS_GITHUB_PAT }}
