@@ -149,9 +149,10 @@ jobs:
 
       - name: Generate Kubernetes ConfigMap with AWS Region and Environment
         run: |
-          CONFIGMAP_FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/config/aws-configmap.yaml"
+          CONFIG_DIR="kustomize-base/${{ github.event.inputs.application }}/overlays/config"
+          CONFIGMAP_FILE="$CONFIG_DIR/aws-configmap.yaml"
 
-          mkdir -p "$(dirname $CONFIGMAP_FILE)"
+          mkdir -p "$CONFIG_DIR"
 
           cat <<EOF > $CONFIGMAP_FILE
           apiVersion: v1
@@ -170,7 +171,7 @@ jobs:
           KUSTOMIZATION_FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/kustomization.yaml"
 
           if ! grep -q "configMapGenerator" "$KUSTOMIZATION_FILE"; then
-            echo -e "\nconfigMapGenerator:\n  - name: aws-config\n    files:\n      - overlays/config/aws-configmap.yaml" >> "$KUSTOMIZATION_FILE"
+            echo -e "\nconfigMapGenerator:\n  - name: aws-config\n    files:\n      - config/aws-configmap.yaml" >> "$KUSTOMIZATION_FILE"
           fi
 
           echo "✅ Kustomization updated to include AWS ConfigMap."
