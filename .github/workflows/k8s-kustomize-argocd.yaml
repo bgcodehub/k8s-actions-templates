@@ -54,15 +54,20 @@ jobs:
           APP_NAME=$(echo "$REPO_NAME" | sed 's/-atlas$//')
           NAMESPACE="$APP_NAME"
 
-          echo "::set-output name=app_name::$APP_NAME"
-          echo "::set-output name=namespace::$NAMESPACE"
+          # Use environment files instead of deprecated `set-output`
+          echo "APP_NAME=$APP_NAME" >> "$GITHUB_ENV"
+          echo "NAMESPACE=$NAMESPACE" >> "$GITHUB_ENV"
 
-          echo "Extracted app name: $APP_NAME"
-          echo "Extracted namespace: $NAMESPACE"
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+          echo "namespace=$NAMESPACE" >> "$GITHUB_OUTPUT"
+
+          echo "✅ Extracted app name: $APP_NAME"
+          echo "✅ Extracted namespace: $NAMESPACE"
 
   build-and-test:
     name: Build and Test Application
     runs-on: ubuntu-latest
+    needs: extract-metadata
     env:
       APP_NAME: ${{ needs.extract-metadata.outputs.app_name }}
       NAMESPACE: ${{ needs.extract-metadata.outputs.namespace }}
@@ -70,12 +75,21 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      - name: Debug Extracted Variables
+        run: |
+          echo "✅ APP_NAME=${{ env.APP_NAME }}"
+          echo "✅ NAMESPACE=${{ env.NAMESPACE }}"
+
       - name: Setup Docker
         uses: docker/setup-buildx-action@v2
 
       - name: Build Docker Image
         run: |
-          docker build -t $APP_NAME:$GITHUB_SHA .
+          if [[ -z "${{ env.APP_NAME }}" ]]; then
+            echo "❌ ERROR: APP_NAME is empty. Exiting."
+            exit 1
+          fi
+          docker build -t ${{ env.APP_NAME }}:$GITHUB_SHA .
 
       - name: Login to JFrog Artifactory
         env:
@@ -89,8 +103,8 @@ jobs:
         env:
           JFROG_URL: ${{ secrets.JFROG_URL }}
         run: |
-          docker tag $APP_NAME:$GITHUB_SHA $JFROG_URL/docker-internal/$APP_NAME:$GITHUB_SHA
-          docker push $JFROG_URL/docker-internal/$APP_NAME:$GITHUB_SHA
+          docker tag ${{ env.APP_NAME }}:$GITHUB_SHA $JFROG_URL/docker-internal/${{ env.APP_NAME }}:$GITHUB_SHA
+          docker push $JFROG_URL/docker-internal/${{ env.APP_NAME }}:$GITHUB_SHA
 
   manage-manifests:
     name: Manage Kubernetes Manifests
