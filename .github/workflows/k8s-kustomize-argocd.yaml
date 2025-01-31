@@ -251,6 +251,35 @@ jobs:
         env:
           NAMESPACE: ${{ env.NAMESPACE }}
         run: |
+          echo "🔹 Updating namespace in all YAML files to: $NAMESPACE"
+          
+          # Find and replace all namespace occurrences
+          find kustomize-base/${{ github.event.inputs.application }}/overlays/ -type f -name "*.yaml" | while read FILE; do
+            echo "Updating namespace in: $FILE"
+
+            # Replace metadata.namespace fields
+            yq -i '(.metadata.namespace // "") |= env(NAMESPACE)' "$FILE"
+
+            # Replace spec.namespace fields (if they exist, avoid adding new ones)
+            yq -i '(.spec.namespace // "") |= env(NAMESPACE)' "$FILE"
+
+            # Replace template metadata namespace fields
+            yq -i '(.spec.template.metadata.namespace // "") |= env(NAMESPACE)' "$FILE"
+
+            # Replace empty or default namespace references inside lists (e.g., namespaceSelector)
+            yq -i '(.namespace // "") |= env(NAMESPACE)' "$FILE"
+            yq -i '(.spec.namespace // "") |= env(NAMESPACE)' "$FILE"
+            yq -i '(.spec.template.namespace // "") |= env(NAMESPACE)' "$FILE"
+
+            echo "✅ Updated $FILE"
+          done
+
+          echo "✅ Namespace updated successfully!"
+
+      - name: Update Namespace in Kustomize Manifest (All Applications)
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}
+        run: |
           FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
           echo "🔹 Updating namespace in $FILE to $NAMESPACE"
           yq -i '.metadata.namespace = "'"$NAMESPACE"'"' $FILE
