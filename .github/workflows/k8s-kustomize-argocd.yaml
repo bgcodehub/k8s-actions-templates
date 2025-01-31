@@ -207,19 +207,29 @@ jobs:
 
       - name: Apply Kustomize Overlays and Output New Configuration
         run: |
-          mkdir -p customized-manifests
-          kustomize build kustomize-base/${{ github.event.inputs.application }}/overlays/ > customized-manifests/deployment.yaml
+          APP_DIR="${{ github.event.inputs.application }}"
+          mkdir -p "$APP_DIR"
+          kustomize build "kustomize-base/${{ github.event.inputs.application }}/overlays/" > "$APP_DIR/deployment.yaml"
           echo "📝 New Updated Configuration:"
-          cat customized-manifests/deployment.yaml
-
+          cat "$APP_DIR/deployment.yaml"
+  
       - name: Validate Kubernetes Manifests with Kubeconform
         run: |
-          kubeconform -strict -summary -ignore-missing-schemas -schema-location default customized-manifests/deployment.yaml
+          kubeconform -strict -summary -ignore-missing-schemas -schema-location default "${{ github.event.inputs.application }}/deployment.yaml"
+
+      - name: Configure Git for Unsigned Commits
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global commit.gpgsign false
+          git config --global gpg.program ""
 
       - name: Push Manifests to Atlas Repository
         env:
-          GITHUB_TOKEN: ${{ secrets.ATLAS_GITHUB_PAT}}
+          GITHUB_TOKEN: ${{ secrets.ATLAS_GITHUB_PAT }}
         run: |
+          set -e  # Exit script immediately on error
+
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
@@ -227,19 +237,56 @@ jobs:
           REPO_URL=${{ github.event.inputs.atlas_repository }}
           AUTH_REPO_URL="https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}"
 
-          # Clone using authenticated URL
-          git clone $AUTH_REPO_URL atlas
+          # Define the target branch based on the environment selection
+          TARGET_BRANCH="${{ github.event.inputs.env_name }}"
+
+          echo "📥 Cloning Atlas repository branch: $TARGET_BRANCH..."
+          git clone --branch "$TARGET_BRANCH" "$AUTH_REPO_URL" atlas
           
-          # Copy updated Kubernetes manifests into the repo
-          cp customized-manifests/deployment.yaml atlas/
+          # Determine the target region-based directory
+          if [[ "${{ github.event.inputs.aws_region }}" == "us-east-1" ]]; then
+            TARGET_DIR="use1-01"
+          elif [[ "${{ github.event.inputs.aws_region }}" == "us-west-2" ]]; then
+            TARGET_DIR="usw2-01"
+          else
+            echo "❌ Error: Invalid AWS Region selected."
+            exit 1
+          fi
+
+          # Construct final destination path within the Atlas repository
+          FINAL_PATH="atlas/$TARGET_DIR/${{ github.event.inputs.application }}"
+
+          echo "📂 Ensuring the directory structure exists: $FINAL_PATH"
+          mkdir -p "$FINAL_PATH"
+
+          # Move the entire application folder (instead of just deployment.yaml)
+          echo "📤 Copying deployment files to $FINAL_PATH..."
+          cp -r "${{ github.event.inputs.application }}"/* "$FINAL_PATH/"
 
           # Navigate to the Atlas repo
           cd atlas
 
-          # Add, commit, and push changes
-          git add deployment.yaml
-          git commit -m "Update manifests for ${{ github.event.inputs.application }} - $GITHUB_SHA"
-          git push origin main
+          echo "🧐 Checking for changes..."
+          git status
+          git diff || echo "ℹ️ No changes detected by git diff"
+
+          # Force Git to detect changes even if metadata hasn't changed
+          git add -A
+
+          # Ensure Git recognizes new files
+          git ls-files --others --exclude-standard
+
+          # If there are no changes, prevent unnecessary commits
+          if git diff --cached --quiet; then
+            echo "✅ No changes detected. Skipping commit."
+            exit 0
+          fi
+
+          echo "✅ Changes detected. Committing..."
+          git commit -m "feat(deploy): update ${{ github.event.inputs.application }} manifests for ${{ github.event.inputs.env_name }} in ${{ github.event.inputs.aws_region }} - $GITHUB_SHA"
+
+          echo "🚀 Pushing changes to branch: $TARGET_BRANCH..."
+          git push origin "$TARGET_BRANCH"
 
   # trigger-argocd:
   #   name: Trigger ArgoCD Deployment
