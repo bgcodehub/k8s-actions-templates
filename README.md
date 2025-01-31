@@ -99,6 +99,25 @@ Once the workflow is in place, add the required **GitHub Actions Secrets**:
 
 ---
 
+## **🛠 Supported Runtime Modifications**
+### `go-api`
+| Key                     | Description                                    |
+|-------------------------|------------------------------------------------|
+| `cpu_limit`             | CPU limit for the container (e.g., "2300m").  |
+| `memory_limit`          | Memory limit for the container (e.g., "1Gi"). |
+| `cpu_request`           | CPU request for the container.                 |
+| `memory_request`        | Memory request for the container.              |
+| `timeout_seconds`       | Liveness probe timeout.                        |
+| `initial_delay_seconds` | Liveness probe initial delay.                  |
+| `revision_history_limit` | Number of revision histories to keep.         |
+
+### `java-api`
+| Key                              | Description                                      |
+|----------------------------------|--------------------------------------------------|
+| `termination_grace_period_seconds` | Termination grace period for container shutdown. |
+| `max_replicas`                   | Maximum replicas for Horizontal Pod Autoscaler. |
+
+
 ## **🛠 Job Breakdown (Pipeline Flow Order)**
 
 ### **1️⃣ Build and Push Docker Image (JFrog Artifactory)**
@@ -162,6 +181,26 @@ data:
 3️⃣ **Validate Application Customization** – Ensures **only `go-api`** and **`java-api`** can have modifications.
 
 4️⃣ **Apply Runtime Modifications** – Dynamically modifies `deploy.yaml` & `hpa.yaml` using `yq`.
+
+- Example modifications JSON for `go-api`:
+  ```json
+  {
+    "cpu_limit": "2300m",
+    "memory_limit": "1Gi",
+    "cpu_request": "1300m",
+    "memory_request": "612Mi",
+    "timeout_seconds": 5,
+    "initial_delay_seconds": 15,
+    "revision_history_limit": 3
+  }
+  ```
+- Example modifications JSON for `java-api`:
+  ```json
+  {
+    "termination_grace_period_seconds": 60,
+    "max_replicas": 15
+  }
+  ```
 
 5️⃣ **Generate AWS ConfigMap** – Dynamically creates a Kubernetes ConfigMap containing `AWS_REGION` and `ENV_NAME`.
 
