@@ -205,13 +205,13 @@ jobs:
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
 
-          - name: Apply Kustomize Overlays and Output New Configuration
-          run: |
-            APP_DIR="${{ github.event.inputs.application }}"
-            mkdir -p "$APP_DIR"
-            kustomize build "kustomize-base/${{ github.event.inputs.application }}/overlays/" > "$APP_DIR/deployment.yaml"
-            echo "📝 New Updated Configuration:"
-            cat "$APP_DIR/deployment.yaml"
+      - name: Apply Kustomize Overlays and Output New Configuration
+        run: |
+          APP_DIR="${{ github.event.inputs.application }}"
+          mkdir -p "$APP_DIR"
+          kustomize build "kustomize-base/${{ github.event.inputs.application }}/overlays/" > "$APP_DIR/deployment.yaml"
+          echo "📝 New Updated Configuration:"
+          cat "$APP_DIR/deployment.yaml"
   
       - name: Validate Kubernetes Manifests with Kubeconform
         run: |
