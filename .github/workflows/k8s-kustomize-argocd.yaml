@@ -37,20 +37,38 @@ on:
         required: true
 
 jobs:
-  build-and-test:
-    name: Build and Test Application
+  extract-metadata:
+    name: Extract Application Metadata
     runs-on: ubuntu-latest
+    outputs:
+      namespace: ${{ steps.extract_metadata.outputs.namespace }}
+      app_name: ${{ steps.extract_metadata.outputs.app_name }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Extract Application Name from Atlas Repository
-        id: extract_app_name
+      - name: Extract Application Name and Namespace from Atlas Repository
+        id: extract_metadata
         run: |
           REPO_NAME=$(basename "${{ github.event.inputs.atlas_repository }}" .git)
           APP_NAME=$(echo "$REPO_NAME" | sed 's/-atlas$//')
-          echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+          NAMESPACE="$APP_NAME"
+
+          echo "::set-output name=app_name::$APP_NAME"
+          echo "::set-output name=namespace::$NAMESPACE"
+
           echo "Extracted app name: $APP_NAME"
+          echo "Extracted namespace: $NAMESPACE"
+
+  build-and-test:
+    name: Build and Test Application
+    runs-on: ubuntu-latest
+    env:
+      APP_NAME: ${{ needs.extract-metadata.outputs.app_name }}
+      NAMESPACE: ${{ needs.extract-metadata.outputs.namespace }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
       - name: Setup Docker
         uses: docker/setup-buildx-action@v2
@@ -78,6 +96,9 @@ jobs:
     name: Manage Kubernetes Manifests
     needs: build-and-test
     runs-on: ubuntu-latest
+    env:
+      APP_NAME: ${{ needs.extract-metadata.outputs.app_name }}
+      NAMESPACE: ${{ needs.extract-metadata.outputs.namespace }}
     steps:
       - name: Checkout Kustomize Repository
         uses: actions/checkout@v3
@@ -212,14 +233,17 @@ jobs:
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
 
-      - name: Update Namespace in Kustomize Manifests
+      - name: Update Namespace in Kustomize Manifest (All Applications)
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}
         run: |
-          APP_DIR="kustomize-base/${{ github.event.inputs.application }}/overlays/"
-          
-          echo "🔹 Updating all namespace references to $NAMESPACE in $APP_DIR"
-          find $APP_DIR -type f -name "*.yaml" -exec yq -i '
-            (.. | select(has("namespace"))).namespace = env(NAMESPACE)
-          ' {} \;
+          FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
+          echo "🔹 Updating namespace in $FILE to $NAMESPACE"
+          yq -i '.metadata.namespace = "'"$NAMESPACE"'"' $FILE
+          yq -i '.spec.template.metadata.namespace = "'"$NAMESPACE"'"' $FILE
+          yq -i '.spec.namespace = "'"$NAMESPACE"'"' $FILE
+          yq -i '.namespace = "'"$NAMESPACE"'"' $FILE
+          yq -i '.metadata.namespace = "'"$NAMESPACE"'"' $(find kustomize-base/${{ github.event.inputs.application }}/overlays/ -type f -name "*.yaml")
           echo "✅ Namespace updated successfully!"
 
       - name: Apply Kustomize Overlays and Output New Configuration
