@@ -202,8 +202,6 @@ CopyEdit
 For `go-api`:
 
 ```json
-json
-CopyEdit
 {
   "cpu_limit": "2300m",
   "memory_limit": "1Gi",
@@ -219,8 +217,6 @@ CopyEdit
 For `java-api`:
 
 ```json
-json
-CopyEdit
 {
   "termination_grace_period_seconds": 60,
   "max_replicas": 15
