@@ -216,46 +216,46 @@ jobs:
         run: |
           kubeconform -strict -summary -ignore-missing-schemas -schema-location default customized-manifests/deployment.yaml
 
-          - name: Push Manifests to Atlas Repository
-          env:
-            GITHUB_TOKEN: ${{ secrets.ATLAS_GITHUB_PAT }}
-          run: |
-            git config --global user.name "GitHub Actions"
-            git config --global user.email "actions@github.com"
-  
-            # Extract repository URL from input and inject GITHUB_TOKEN for authentication
-            REPO_URL=${{ github.event.inputs.atlas_repository }}
-            AUTH_REPO_URL="https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}"
-  
-            # Clone using authenticated URL
-            git clone $AUTH_REPO_URL atlas
-            
-            # Determine the target folder based on the selected AWS region
-            if [[ "${{ github.event.inputs.aws_region }}" == "us-east-1" ]]; then
-              TARGET_DIR="use1-01"
-            elif [[ "${{ github.event.inputs.aws_region }}" == "us-west-2" ]]; then
-              TARGET_DIR="usw2-01"
-            else
-              echo "❌ Error: Invalid AWS Region selected."
-              exit 1
-            fi
-  
-            # Construct final destination path within the Atlas repository
-            FINAL_PATH="atlas/$TARGET_DIR/${{ github.event.inputs.application }}"
-            
-            # Ensure the application folder exists
-            mkdir -p "$FINAL_PATH"
-  
-            # Copy updated Kubernetes manifests into the correct region-based directory
-            cp customized-manifests/deployment.yaml "$FINAL_PATH/deployment.yaml"
-  
-            # Navigate to the Atlas repo
-            cd atlas
-  
-            # Add, commit, and push changes
-            git add "$FINAL_PATH/deployment.yaml"
-            git commit -m "Update manifests for ${{ github.event.inputs.application }} - $GITHUB_SHA"
-            git push origin main
+      - name: Push Manifests to Atlas Repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.ATLAS_GITHUB_PAT }}
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+          # Extract repository URL from input and inject GITHUB_TOKEN for authentication
+          REPO_URL=${{ github.event.inputs.atlas_repository }}
+          AUTH_REPO_URL="https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}"
+
+          # Clone using authenticated URL
+          git clone $AUTH_REPO_URL atlas
+          
+          # Determine the target folder based on the selected AWS region
+          if [[ "${{ github.event.inputs.aws_region }}" == "us-east-1" ]]; then
+            TARGET_DIR="use1-01"
+          elif [[ "${{ github.event.inputs.aws_region }}" == "us-west-2" ]]; then
+            TARGET_DIR="usw2-01"
+          else
+            echo "❌ Error: Invalid AWS Region selected."
+            exit 1
+          fi
+
+          # Construct final destination path within the Atlas repository
+          FINAL_PATH="atlas/$TARGET_DIR/${{ github.event.inputs.application }}"
+          
+          # Ensure the application folder exists
+          mkdir -p "$FINAL_PATH"
+
+          # Copy updated Kubernetes manifests into the correct region-based directory
+          cp customized-manifests/deployment.yaml "$FINAL_PATH/deployment.yaml"
+
+          # Navigate to the Atlas repo
+          cd atlas
+
+          # Add, commit, and push changes
+          git add "$FINAL_PATH/deployment.yaml"
+          git commit -m "Update manifests for ${{ github.event.inputs.application }} - $GITHUB_SHA"
+          git push origin main
 
   # trigger-argocd:
   #   name: Trigger ArgoCD Deployment
