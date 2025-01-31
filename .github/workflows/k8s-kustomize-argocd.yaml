@@ -66,12 +66,11 @@ jobs:
           docker tag my-app:$GITHUB_SHA $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
           docker push $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
 
+
   manage-manifests:
     name: Manage Kubernetes Manifests
     needs: build-and-test
     runs-on: ubuntu-latest
-    env:
-      IMAGE_URL: ${{ needs.build-and-test.outputs.image_url }} 
     steps:
       - name: Checkout Kustomize Repository
         uses: actions/checkout@v3
@@ -148,16 +147,42 @@ jobs:
       
           echo "✅ Updates completed successfully!"
 
-      - name: Update AWS_REGION and ENV_NAME in Deployment
+      - name: Generate Kubernetes ConfigMap with AWS Region and Environment
         run: |
-          FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
-          
-          echo "🔹 Updating AWS_REGION and ENV_NAME in $FILE"
-          
-          yq -i '.spec.template.spec.containers[0].env[0].value = "${{ github.event.inputs.aws_region }}"' $FILE
-          yq -i '.spec.template.spec.containers[0].env[1].value = "${{ github.event.inputs.env_name }}"' $FILE
+          CONFIGMAP_FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/config/aws-configmap.yaml"
 
-          echo "✅ AWS_REGION and ENV_NAME updated!"
+          mkdir -p "$(dirname $CONFIGMAP_FILE)"
+
+          cat <<EOF > $CONFIGMAP_FILE
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: aws-config
+          data:
+            AWS_REGION: "${{ github.event.inputs.aws_region }}"
+            ENV_NAME: "${{ github.event.inputs.env_name }}"
+          EOF
+
+          echo "✅ AWS ConfigMap generated at $CONFIGMAP_FILE"
+
+      - name: Update Kustomization to Include ConfigMap
+        run: |
+          KUSTOMIZATION_FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/kustomization.yaml"
+
+          if ! grep -q "configMapGenerator" "$KUSTOMIZATION_FILE"; then
+            echo -e "\nconfigMapGenerator:\n  - name: aws-config\n    files:\n      - overlays/config/aws-configmap.yaml" >> "$KUSTOMIZATION_FILE"
+          fi
+
+          echo "✅ Kustomization updated to include AWS ConfigMap."
+
+      - name: Update Deployment to Reference ConfigMap
+        run: |
+          DEPLOYMENT_FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
+
+          yq -i '.spec.template.spec.containers[0].env += [{"name": "AWS_REGION", "valueFrom": {"configMapKeyRef": {"name": "aws-config", "key": "AWS_REGION"}}}]' $DEPLOYMENT_FILE
+          yq -i '.spec.template.spec.containers[0].env += [{"name": "ENV_NAME", "valueFrom": {"configMapKeyRef": {"name": "aws-config", "key": "ENV_NAME"}}}]' $DEPLOYMENT_FILE
+
+          echo "✅ Deployment updated to reference ConfigMap values."
 
       - name: Update Image in Kustomize Manifest (All Applications)
         env:
@@ -169,7 +194,7 @@ jobs:
           echo "🔹 Updating image in $FILE to $IMAGE_URL"
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
-          
+
       - name: Apply Kustomize Overlays and Output New Configuration
         run: |
           mkdir -p customized-manifests
