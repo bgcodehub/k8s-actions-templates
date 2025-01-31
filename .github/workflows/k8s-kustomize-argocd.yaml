@@ -227,10 +227,13 @@ jobs:
           REPO_URL=${{ github.event.inputs.atlas_repository }}
           AUTH_REPO_URL="https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}"
 
-          # Clone using authenticated URL
-          git clone $AUTH_REPO_URL atlas
+          # Define the target branch based on environment selection
+          TARGET_BRANCH="${{ github.event.inputs.env_name }}"
+
+          # Clone the correct branch from the Atlas repository
+          git clone --branch $TARGET_BRANCH $AUTH_REPO_URL atlas
           
-          # Determine the target folder based on the selected AWS region
+          # Determine the target region-based directory
           if [[ "${{ github.event.inputs.aws_region }}" == "us-east-1" ]]; then
             TARGET_DIR="use1-01"
           elif [[ "${{ github.event.inputs.aws_region }}" == "us-west-2" ]]; then
@@ -241,21 +244,27 @@ jobs:
           fi
 
           # Construct final destination path within the Atlas repository
-          FINAL_PATH="atlas/$TARGET_DIR/${{ github.event.inputs.application }}"
-          
-          # Ensure the application folder exists
+          FINAL_PATH="atlas/$TARGET_BRANCH/$TARGET_DIR/${{ github.event.inputs.application }}"
+
+          # Ensure the directory exists
           mkdir -p "$FINAL_PATH"
 
-          # Copy updated Kubernetes manifests into the correct region-based directory
+          # Copy updated Kubernetes manifests into the correct directory
           cp customized-manifests/deployment.yaml "$FINAL_PATH/deployment.yaml"
 
           # Navigate to the Atlas repo
           cd atlas
 
+          # Check if there are changes before committing
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "✅ No changes to commit. Exiting."
+            exit 0
+          fi
+
           # Add, commit, and push changes
           git add "$FINAL_PATH/deployment.yaml"
-          git commit -m "Update manifests for ${{ github.event.inputs.application }} - $GITHUB_SHA"
-          git push origin main
+          git commit -m "feat(deploy): update ${{ github.event.inputs.application }} manifests for ${{ github.event.inputs.env_name }} in ${{ github.event.inputs.aws_region }} - $GITHUB_SHA"
+          git push origin $TARGET_BRANCH
 
   # trigger-argocd:
   #   name: Trigger ArgoCD Deployment
