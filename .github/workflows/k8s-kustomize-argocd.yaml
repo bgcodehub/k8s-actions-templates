@@ -44,28 +44,35 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      - name: Extract Application Name from Atlas Repository
+        id: extract_app_name
+        run: |
+          REPO_NAME=$(basename "${{ github.event.inputs.atlas_repository }}" .git)
+          APP_NAME=$(echo "$REPO_NAME" | sed 's/-atlas$//')
+          echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+          echo "Extracted app name: $APP_NAME"
+
       - name: Setup Docker
         uses: docker/setup-buildx-action@v2
 
       - name: Build Docker Image
         run: |
-          docker build -t my-app:$GITHUB_SHA .
+          docker build -t $APP_NAME:$GITHUB_SHA .
 
-      - name: Login to JFrog Artifactory
+      - name: Login to Company JFrog Artifactory
         env:
-          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
-          ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}
-          ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
+          JFROG_URL: ${{ secrets.JFROG_URL }}
+          JFROG_USER: ${{ secrets.JFROG_USER }}
+          JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
         run: |
-          echo $ARTIFACTORY_PASSWORD | docker login -u $ARTIFACTORY_USER --password-stdin $ARTIFACTORY_URL
+          echo $JFROG_API_KEY | docker login $JFROG_URL -u $JFROG_USER --password-stdin
 
-      - name: Tag and Push Image to Artifactory
+      - name: Tag and Push Image to Company JFrog Artifactory
         env:
-          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+          JFROG_URL: ${{ secrets.JFROG_URL }}
         run: |
-          docker tag my-app:$GITHUB_SHA $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
-          docker push $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
-
+          docker tag $APP_NAME:$GITHUB_SHA $JFROG_URL/docker-internal/$APP_NAME:$GITHUB_SHA
+          docker push $JFROG_URL/docker-internal/$APP_NAME:$GITHUB_SHA
 
   manage-manifests:
     name: Manage Kubernetes Manifests
@@ -196,9 +203,9 @@ jobs:
 
       - name: Update Image in Kustomize Manifest (All Applications)
         env:
-          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+          JFROG_URL: ${{ secrets.JFROG_URL }}
         run: |
-          IMAGE_URL="$ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA"
+          IMAGE_URL="$JFROG_URL/docker-internal/$APP_NAME:$GITHUB_SHA"
           FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
 
           echo "🔹 Updating image in $FILE to $IMAGE_URL"
