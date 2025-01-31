@@ -251,32 +251,14 @@ jobs:
           echo "✅ Image updated successfully!"
   
       - name: Apply Kustomize Overlays and Output New Configuration
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}
         run: |
           APP_DIR="${{ github.event.inputs.application }}"
           mkdir -p "$APP_DIR"
           kustomize build "kustomize-base/${{ github.event.inputs.application }}/overlays/" > "$APP_DIR/deployment.yaml"
           echo "📝 New Updated Configuration:"
           cat "$APP_DIR/deployment.yaml"
-
-      - name: Update Namespace in Generated Kubernetes Manifests
-        run: |
-          echo "🔹 Updating namespace in final Kubernetes manifests to: $NAMESPACE"
-          
-          find "${{ github.event.inputs.application }}/" -type f -name "*.yaml" | while read FILE; do
-            if [[ "$FILE" == *"kustomization.yaml"* ]]; then
-              echo "Skipping namespace update for $FILE..."
-              continue
-            fi
-
-            echo "Updating namespace in: $FILE"
-
-            yq -i '.metadata.namespace = env(NAMESPACE)' "$FILE"
-            yq -i 'del(.spec.namespace)' "$FILE"
-            yq -i 'del(.spec.template.metadata.namespace)' "$FILE"
-            yq -i 'if .spec.namespaceSelector then .spec.namespaceSelector.matchNames = [env(NAMESPACE)] else . end' "$FILE"
-
-            echo "✅ Updated $FILE"
-          done
 
       - name: Validate Kubernetes Manifests with Kubeconform
         run: |
