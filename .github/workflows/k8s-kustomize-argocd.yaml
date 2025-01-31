@@ -249,21 +249,6 @@ jobs:
           echo "🔹 Updating image in $FILE to $IMAGE_URL"
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
-
-      - name: Update Namespace in Kustomize Manifests
-        run: |
-          echo "🔹 Updating namespace in all YAML files to: $NAMESPACE"
-          
-          find kustomize-base/${{ github.event.inputs.application }}/overlays/ -type f -name "*.yaml" | while read FILE; do
-            echo "Updating namespace in: $FILE"
-      
-            yq -i '.metadata.namespace = env(NAMESPACE)' "$FILE"
-            yq -i 'del(.spec.namespace)' "$FILE"
-            yq -i 'del(.spec.template.spec.namespace)' "$FILE"
-            yq -i 'with(.spec.namespaceSelector; .matchNames = [env(NAMESPACE)] | select(. != null))' "$FILE"
-      
-            echo "✅ Updated $FILE"
-          done
   
       - name: Apply Kustomize Overlays and Output New Configuration
         run: |
@@ -272,7 +257,27 @@ jobs:
           kustomize build "kustomize-base/${{ github.event.inputs.application }}/overlays/" > "$APP_DIR/deployment.yaml"
           echo "📝 New Updated Configuration:"
           cat "$APP_DIR/deployment.yaml"
-  
+
+      - name: Update Namespace in Generated Kubernetes Manifests
+        run: |
+          echo "🔹 Updating namespace in final Kubernetes manifests to: $NAMESPACE"
+          
+          find "${{ github.event.inputs.application }}/" -type f -name "*.yaml" | while read FILE; do
+            if [[ "$FILE" == *"kustomization.yaml"* ]]; then
+              echo "Skipping namespace update for $FILE..."
+              continue
+            fi
+
+            echo "Updating namespace in: $FILE"
+
+            yq -i '.metadata.namespace = env(NAMESPACE)' "$FILE"
+            yq -i 'del(.spec.namespace)' "$FILE"
+            yq -i 'del(.spec.template.metadata.namespace)' "$FILE"
+            yq -i 'if .spec.namespaceSelector then .spec.namespaceSelector.matchNames = [env(NAMESPACE)] else . end' "$FILE"
+
+            echo "✅ Updated $FILE"
+          done
+
       - name: Validate Kubernetes Manifests with Kubeconform
         run: |
           kubeconform -strict -summary -ignore-missing-schemas -schema-location default "${{ github.event.inputs.application }}/deployment.yaml"
