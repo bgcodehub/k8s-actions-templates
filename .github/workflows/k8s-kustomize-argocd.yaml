@@ -227,7 +227,7 @@ jobs:
           REPO_URL=${{ github.event.inputs.atlas_repository }}
           AUTH_REPO_URL="https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}"
 
-          # Define the target branch based on environment selection
+          # Define the target branch based on the environment selection
           TARGET_BRANCH="${{ github.event.inputs.env_name }}"
 
           # Clone the correct branch from the Atlas repository
@@ -244,18 +244,18 @@ jobs:
           fi
 
           # Construct final destination path within the Atlas repository
-          FINAL_PATH="atlas/$TARGET_BRANCH/$TARGET_DIR/${{ github.event.inputs.application }}"
+          FINAL_PATH="atlas/$TARGET_DIR/${{ github.event.inputs.application }}"
 
           # Ensure the directory exists
           mkdir -p "$FINAL_PATH"
 
-          # Copy updated Kubernetes manifests into the correct directory
+          # Move the deployment manifest into the correct region and application folder
           cp customized-manifests/deployment.yaml "$FINAL_PATH/deployment.yaml"
 
           # Navigate to the Atlas repo
           cd atlas
 
-          # Check if there are changes before committing
+          # Check if there are actual changes before committing
           if git diff --quiet && git diff --staged --quiet; then
             echo "✅ No changes to commit. Exiting."
             exit 0
