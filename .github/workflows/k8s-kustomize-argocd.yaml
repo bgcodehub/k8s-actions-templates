@@ -217,7 +217,9 @@ jobs:
           APP_DIR="kustomize-base/${{ github.event.inputs.application }}/overlays/"
           
           echo "🔹 Updating all namespace references to $NAMESPACE in $APP_DIR"
-          find $APP_DIR -type f -name "*.yaml" -exec yq -i '.metadata.namespace = env(NAMESPACE)' {} \;
+          find $APP_DIR -type f -name "*.yaml" -exec yq -i '
+            (.. | select(has("namespace"))).namespace = env(NAMESPACE)
+          ' {} \;
           echo "✅ Namespace updated successfully!"
 
       - name: Apply Kustomize Overlays and Output New Configuration
