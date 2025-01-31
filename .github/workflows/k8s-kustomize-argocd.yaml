@@ -205,16 +205,17 @@ jobs:
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
 
-      - name: Apply Kustomize Overlays and Output New Configuration
-        run: |
-          mkdir -p customized-manifests
-          kustomize build kustomize-base/${{ github.event.inputs.application }}/overlays/ > customized-manifests/deployment.yaml
-          echo "📝 New Updated Configuration:"
-          cat customized-manifests/deployment.yaml
-
+          - name: Apply Kustomize Overlays and Output New Configuration
+          run: |
+            APP_DIR="${{ github.event.inputs.application }}"
+            mkdir -p "$APP_DIR"
+            kustomize build "kustomize-base/${{ github.event.inputs.application }}/overlays/" > "$APP_DIR/deployment.yaml"
+            echo "📝 New Updated Configuration:"
+            cat "$APP_DIR/deployment.yaml"
+  
       - name: Validate Kubernetes Manifests with Kubeconform
         run: |
-          kubeconform -strict -summary -ignore-missing-schemas -schema-location default customized-manifests/deployment.yaml
+          kubeconform -strict -summary -ignore-missing-schemas -schema-location default "${{ github.event.inputs.application }}/deployment.yaml"
 
       - name: Push Manifests to Atlas Repository
         env:
@@ -246,11 +247,11 @@ jobs:
           # Construct final destination path within the Atlas repository
           FINAL_PATH="atlas/$TARGET_DIR/${{ github.event.inputs.application }}"
 
-          # Ensure the directory exists
+          # Ensure the application directory exists
           mkdir -p "$FINAL_PATH"
 
-          # Move the deployment manifest into the correct region and application folder
-          cp customized-manifests/deployment.yaml "$FINAL_PATH/deployment.yaml"
+          # Move the entire application folder (instead of just deployment.yaml)
+          cp -r "${{ github.event.inputs.application }}" "$FINAL_PATH"
 
           # Navigate to the Atlas repo
           cd atlas
@@ -262,7 +263,7 @@ jobs:
           fi
 
           # Add, commit, and push changes
-          git add "$FINAL_PATH/deployment.yaml"
+          git add "$FINAL_PATH"
           git commit -m "feat(deploy): update ${{ github.event.inputs.application }} manifests for ${{ github.event.inputs.env_name }} in ${{ github.event.inputs.aws_region }} - $GITHUB_SHA"
           git push origin $TARGET_BRANCH
 
