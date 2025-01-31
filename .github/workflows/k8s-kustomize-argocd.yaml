@@ -227,9 +227,12 @@ jobs:
   
       - name: Push Manifests to Atlas Repository
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ATLAS_GITHUB_PAT }}
         run: |
-          set -e  # Exit script on error
+          set -e  # Exit script immediately on error
+
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
           # Extract repository URL from input and inject GITHUB_TOKEN for authentication
           REPO_URL=${{ github.event.inputs.atlas_repository }}
@@ -280,8 +283,8 @@ jobs:
             exit 0
           fi
 
-          echo "✅ Changes detected. Committing with verified signature..."
-          git commit -S -m "feat(deploy): update ${{ github.event.inputs.application }} manifests for ${{ github.event.inputs.env_name }} in ${{ github.event.inputs.aws_region }} - $GITHUB_SHA"
+          echo "✅ Changes detected. Committing..."
+          git commit -m "feat(deploy): update ${{ github.event.inputs.application }} manifests for ${{ github.event.inputs.env_name }} in ${{ github.event.inputs.aws_region }} - $GITHUB_SHA"
 
           echo "🚀 Pushing changes to branch: $TARGET_BRANCH..."
           git push origin "$TARGET_BRANCH"
