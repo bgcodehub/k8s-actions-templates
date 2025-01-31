@@ -59,7 +59,7 @@ jobs:
         run: |
           docker build -t $APP_NAME:$GITHUB_SHA .
 
-      - name: Login to Company JFrog Artifactory
+      - name: Login to JFrog Artifactory
         env:
           JFROG_URL: ${{ secrets.JFROG_URL }}
           JFROG_USER: ${{ secrets.JFROG_USER }}
@@ -67,7 +67,7 @@ jobs:
         run: |
           echo $JFROG_API_KEY | docker login $JFROG_URL -u $JFROG_USER --password-stdin
 
-      - name: Tag and Push Image to Company JFrog Artifactory
+      - name: Tag and Push Image to JFrog Artifactory
         env:
           JFROG_URL: ${{ secrets.JFROG_URL }}
         run: |
