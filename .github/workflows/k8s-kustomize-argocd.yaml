@@ -192,6 +192,28 @@ jobs:
       
           echo "✅ Updates completed successfully!"
 
+      - name: Apply Namespace in All Kubernetes Manifests
+        run: |
+          echo "🔹 Updating namespace in final Kubernetes manifests to: $NAMESPACE"
+          
+          # Find and update all YAML files in overlays of any application
+          find kustomize-base/ -type f -name "*.yaml" | while read FILE; do
+            if [[ "$FILE" == *"kustomization.yaml"* ]]; then
+              echo "Skipping namespace update for $FILE..."
+              continue
+            fi
+      
+            echo "Updating namespace in: $FILE"
+      
+            # Replace namespace in metadata
+            yq -i '.metadata.namespace = "'"$NAMESPACE"'"' "$FILE"
+      
+            # Ensure namespaceSelector matchNames is updated if present
+            yq -i 'if .spec.namespaceSelector then .spec.namespaceSelector.matchNames = ["'"$NAMESPACE"'"] else . end' "$FILE"
+      
+            echo "✅ Updated $FILE"
+          done
+        
       - name: Generate Kubernetes ConfigMap with AWS Region and Environment
         run: |
           CONFIG_DIR="kustomize-base/${{ github.event.inputs.application }}/overlays/config"
@@ -249,33 +271,6 @@ jobs:
           echo "🔹 Updating image in $FILE to $IMAGE_URL"
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
-
-      - name: Update Namespace in Kustomize Manifests
-        env:
-          NAMESPACE: ${{ env.NAMESPACE }}  # Ensure namespace is available directly
-        run: |
-          echo "🔹 Updating namespace in final Kubernetes manifests to: $NAMESPACE"
-      
-          # Check if application directory exists
-          APP_DIR="kustomize-base/${{ github.event.inputs.application }}/overlays"
-          if [[ ! -d "$APP_DIR" ]]; then
-            echo "❌ Error: Directory $APP_DIR does not exist!"
-            exit 1
-          fi
-      
-          # Find and update all YAML files
-          find "$APP_DIR" -type f -name "*.yaml" | while read FILE; do
-            if [[ "$FILE" == *"kustomization.yaml"* ]]; then
-              echo "Skipping namespace update for $FILE..."
-              continue
-            fi
-      
-            echo "Updating namespace in: $FILE"
-      
-            # Replace namespace: default with the environment namespace
-            yq -i '(.metadata.namespace // "default") = env(NAMESPACE)' "$FILE"
-            echo "✅ Updated $FILE"
-          done
         
       - name: Apply Kustomize Overlays and Output New Configuration
         env:
