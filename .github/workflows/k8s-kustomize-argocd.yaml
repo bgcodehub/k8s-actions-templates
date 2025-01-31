@@ -106,10 +106,12 @@ jobs:
     name: Manage Kubernetes Manifests
     needs: build-and-test
     runs-on: ubuntu-latest
-    env:
-      APP_NAME: ${{ needs.extract-metadata.outputs.app_name }}
-      NAMESPACE: ${{ needs.extract-metadata.outputs.namespace }}
     steps:
+      - name: Debug Extracted Variables
+        run: |
+          echo "✅ Extracted APP_NAME=${{ needs.extract-metadata.outputs.app_name }}"
+          echo "✅ Extracted NAMESPACE=${{ needs.extract-metadata.outputs.namespace }}"
+
       - name: Checkout Kustomize Repository
         uses: actions/checkout@v3
         with:
@@ -242,11 +244,6 @@ jobs:
           echo "🔹 Updating image in $FILE to $IMAGE_URL"
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
-
-      - name: Debug Extracted Variables
-        run: |
-          echo "✅ Extracted APP_NAME=${{ env.APP_NAME }}"
-          echo "✅ Extracted NAMESPACE=${{ env.NAMESPACE }}"
 
       - name: Update Namespace in Kustomize Manifests
         run: |
