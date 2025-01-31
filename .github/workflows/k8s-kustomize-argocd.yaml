@@ -251,10 +251,20 @@ jobs:
           echo "✅ Image updated successfully!"
 
       - name: Update Namespace in Kustomize Manifests
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}  # Ensure namespace is available directly
         run: |
           echo "🔹 Updating namespace in final Kubernetes manifests to: $NAMESPACE"
       
-          find "${{ github.event.inputs.application }}/" -type f -name "*.yaml" | while read FILE; do
+          # Check if application directory exists
+          APP_DIR="kustomize-base/${{ github.event.inputs.application }}/overlays"
+          if [[ ! -d "$APP_DIR" ]]; then
+            echo "❌ Error: Directory $APP_DIR does not exist!"
+            exit 1
+          fi
+      
+          # Find and update all YAML files
+          find "$APP_DIR" -type f -name "*.yaml" | while read FILE; do
             if [[ "$FILE" == *"kustomization.yaml"* ]]; then
               echo "Skipping namespace update for $FILE..."
               continue
@@ -262,9 +272,8 @@ jobs:
       
             echo "Updating namespace in: $FILE"
       
-            # Replace default namespace with the correct one
+            # Replace namespace: default with the environment namespace
             yq -i '(.metadata.namespace // "default") = env(NAMESPACE)' "$FILE"
-      
             echo "✅ Updated $FILE"
           done
         
