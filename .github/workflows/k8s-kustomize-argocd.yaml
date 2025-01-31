@@ -212,6 +212,14 @@ jobs:
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
 
+      - name: Update Namespace in Kustomize Manifests
+        run: |
+          APP_DIR="kustomize-base/${{ github.event.inputs.application }}/overlays/"
+          
+          echo "🔹 Updating all namespace references to $NAMESPACE in $APP_DIR"
+          find $APP_DIR -type f -name "*.yaml" -exec yq -i '.metadata.namespace = env(NAMESPACE)' {} \;
+          echo "✅ Namespace updated successfully!"
+
       - name: Apply Kustomize Overlays and Output New Configuration
         run: |
           APP_DIR="${{ github.event.inputs.application }}"
