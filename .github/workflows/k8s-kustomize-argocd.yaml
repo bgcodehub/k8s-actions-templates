@@ -104,13 +104,18 @@ jobs:
 
   manage-manifests:
     name: Manage Kubernetes Manifests
-    needs: extract-metadata
+    needs: [ extract-metadata, extract-metadata ]
     runs-on: ubuntu-latest
     steps:
+      - name: Set Environment Variables from Job Outputs
+        run: |
+          echo "APP_NAME=${{ needs.extract-metadata.outputs.app_name }}" >> "$GITHUB_ENV"
+          echo "NAMESPACE=${{ needs.extract-metadata.outputs.namespace }}" >> "$GITHUB_ENV"
+
       - name: Debug Extracted Variables
         run: |
-          echo "✅ Extracted APP_NAME=${{ needs.extract-metadata.outputs.app_name }}"
-          echo "✅ Extracted NAMESPACE=${{ needs.extract-metadata.outputs.namespace }}"
+          echo "✅ Extracted APP_NAME=${{ env.APP_NAME }}"
+          echo "✅ Extracted NAMESPACE=${{ env.NAMESPACE }}"
         
       - name: Checkout Kustomize Repository
         uses: actions/checkout@v3
@@ -249,23 +254,17 @@ jobs:
         run: |
           echo "🔹 Updating namespace in all YAML files to: $NAMESPACE"
           
-          # Find and replace only metadata.namespace (avoid modifying spec)
           find kustomize-base/${{ github.event.inputs.application }}/overlays/ -type f -name "*.yaml" | while read FILE; do
             echo "Updating namespace in: $FILE"
 
-            # Replace namespace in metadata only
-            yq -i '(.metadata.namespace // "") |= env(NAMESPACE)' "$FILE"
-
-            # Remove invalid namespace fields inside spec
+            yq -i '(.metadata.namespace) = env(NAMESPACE)' "$FILE"
             yq -i 'del(.spec.namespace)' "$FILE"
-            yq -i 'del(.spec.template.spec.namespace)' "$FILE"
-
-            # Replace namespaceSelector if applicable
-            yq -i '(.spec.namespaceSelector.matchNames // []) |= [env(NAMESPACE)]' "$FILE"
+            yq -i 'del(.spec.template.metadata.namespace)' "$FILE"
+            yq -i 'if .spec.namespaceSelector then .spec.namespaceSelector.matchNames = [env(NAMESPACE)] else . end' "$FILE"
 
             echo "✅ Updated $FILE"
           done
-
+  
       - name: Apply Kustomize Overlays and Output New Configuration
         run: |
           APP_DIR="${{ github.event.inputs.application }}"
