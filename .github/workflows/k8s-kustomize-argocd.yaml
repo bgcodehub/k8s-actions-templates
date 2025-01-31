@@ -104,14 +104,14 @@ jobs:
 
   manage-manifests:
     name: Manage Kubernetes Manifests
-    needs: build-and-test
+    needs: extract-metadata
     runs-on: ubuntu-latest
     steps:
       - name: Debug Extracted Variables
         run: |
           echo "✅ Extracted APP_NAME=${{ needs.extract-metadata.outputs.app_name }}"
           echo "✅ Extracted NAMESPACE=${{ needs.extract-metadata.outputs.namespace }}"
-
+        
       - name: Checkout Kustomize Repository
         uses: actions/checkout@v3
         with:
