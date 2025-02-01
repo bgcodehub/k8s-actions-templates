@@ -37,41 +37,86 @@ on:
         required: true
 
 jobs:
-  build-and-test:
-    name: Build and Test Application
+  extract-metadata:
+    name: Extract Application Metadata
     runs-on: ubuntu-latest
+    outputs:
+      namespace: ${{ steps.extract_metadata.outputs.namespace }}
+      app_name: ${{ steps.extract_metadata.outputs.app_name }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
+
+      - name: Extract Application Name and Namespace from Atlas Repository
+        id: extract_metadata
+        run: |
+          REPO_NAME=$(basename "${{ github.event.inputs.atlas_repository }}" .git)
+          APP_NAME=$(echo "$REPO_NAME" | sed 's/-atlas$//')
+          NAMESPACE="$APP_NAME"
+
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+          echo "namespace=$NAMESPACE" >> "$GITHUB_OUTPUT"
+
+          echo "✅ Extracted app name: $APP_NAME"
+          echo "✅ Extracted namespace: $NAMESPACE"
+
+  build-and-test:
+    name: Build and Test Application
+    runs-on: ubuntu-latest
+    needs: extract-metadata
+    env:
+      APP_NAME: ${{ needs.extract-metadata.outputs.app_name }}
+      NAMESPACE: ${{ needs.extract-metadata.outputs.namespace }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Debug Extracted Variables
+        run: |
+          echo "✅ APP_NAME=${{ env.APP_NAME }}"
+          echo "✅ NAMESPACE=${{ env.NAMESPACE }}"
 
       - name: Setup Docker
         uses: docker/setup-buildx-action@v2
 
       - name: Build Docker Image
         run: |
-          docker build -t my-app:$GITHUB_SHA .
+          if [[ -z "${{ env.APP_NAME }}" ]]; then
+            echo "❌ ERROR: APP_NAME is empty. Exiting."
+            exit 1
+          fi
+          docker build -t ${{ env.APP_NAME }}:$GITHUB_SHA .
 
       - name: Login to JFrog Artifactory
         env:
-          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
-          ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}
-          ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD }}
+          JFROG_URL: ${{ secrets.JFROG_URL }}
+          JFROG_USER: ${{ secrets.JFROG_USER }}
+          JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
         run: |
-          echo $ARTIFACTORY_PASSWORD | docker login -u $ARTIFACTORY_USER --password-stdin $ARTIFACTORY_URL
+          echo $JFROG_API_KEY | docker login $JFROG_URL -u $JFROG_USER --password-stdin
 
-      - name: Tag and Push Image to Artifactory
+      - name: Tag and Push Image to JFrog Artifactory
         env:
-          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+          JFROG_URL: ${{ secrets.JFROG_URL }}
         run: |
-          docker tag my-app:$GITHUB_SHA $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
-          docker push $ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA
-
+          docker tag ${{ env.APP_NAME }}:$GITHUB_SHA $JFROG_URL/docker-internal/${{ env.APP_NAME }}:$GITHUB_SHA
+          docker push $JFROG_URL/docker-internal/${{ env.APP_NAME }}:$GITHUB_SHA
 
   manage-manifests:
     name: Manage Kubernetes Manifests
-    needs: build-and-test
+    needs: [ extract-metadata, build-and-test ]
     runs-on: ubuntu-latest
     steps:
+      - name: Set Environment Variables from Job Outputs
+        run: |
+          echo "APP_NAME=${{ needs.extract-metadata.outputs.app_name }}" >> "$GITHUB_ENV"
+          echo "NAMESPACE=${{ needs.extract-metadata.outputs.namespace }}" >> "$GITHUB_ENV"
+
+      - name: Debug Extracted Variables
+        run: |
+          echo "✅ Extracted APP_NAME=${{ env.APP_NAME }}"
+          echo "✅ Extracted NAMESPACE=${{ env.NAMESPACE }}"
+        
       - name: Checkout Kustomize Repository
         uses: actions/checkout@v3
         with:
@@ -146,7 +191,7 @@ jobs:
           done
       
           echo "✅ Updates completed successfully!"
-
+        
       - name: Generate Kubernetes ConfigMap with AWS Region and Environment
         run: |
           CONFIG_DIR="kustomize-base/${{ github.event.inputs.application }}/overlays/config"
@@ -196,23 +241,33 @@ jobs:
 
       - name: Update Image in Kustomize Manifest (All Applications)
         env:
-          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+          JFROG_URL: ${{ secrets.JFROG_URL }}
         run: |
-          IMAGE_URL="$ARTIFACTORY_URL/docker-local/my-app:$GITHUB_SHA"
+          IMAGE_URL="$JFROG_URL/docker-internal/$APP_NAME:$GITHUB_SHA"
           FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
 
           echo "🔹 Updating image in $FILE to $IMAGE_URL"
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
 
+      - name: Update Namespace in Base Kustomization
+        run: |
+          echo "🔹 Updating namespace in base/kustomization.yaml to: $NAMESPACE"
+
+          yq -i '.namespace = strenv(NAMESPACE)' kustomize-base/base/kustomization.yaml
+
+          echo "✅ Namespace updated successfully in base/kustomization.yaml"
+
       - name: Apply Kustomize Overlays and Output New Configuration
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}
         run: |
           APP_DIR="${{ github.event.inputs.application }}"
           mkdir -p "$APP_DIR"
           kustomize build "kustomize-base/${{ github.event.inputs.application }}/overlays/" > "$APP_DIR/deployment.yaml"
           echo "📝 New Updated Configuration:"
           cat "$APP_DIR/deployment.yaml"
-  
+
       - name: Validate Kubernetes Manifests with Kubeconform
         run: |
           kubeconform -strict -summary -ignore-missing-schemas -schema-location default "${{ github.event.inputs.application }}/deployment.yaml"
