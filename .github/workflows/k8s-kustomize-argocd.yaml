@@ -205,8 +205,8 @@ jobs:
       
             echo "Updating namespace in: $FILE"
       
-            yq -i '(.metadata.namespace // "default") = "'"$NAMESPACE"'"' "$FILE"
-            yq -i '(.spec.namespaceSelector.matchNames // []) |= ["'"$NAMESPACE"'"]' "$FILE"
+            yq -i 'if has("metadata") and has("namespace") then .metadata.namespace = env(NAMESPACE) else . end' "$FILE"
+            yq -i 'if has("spec") and .spec.namespaceSelector then .spec.namespaceSelector.matchNames = ["'"$NAMESPACE"'"] else . end' "$FILE"
       
             echo "✅ Updated $FILE"
           done
