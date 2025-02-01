@@ -225,18 +225,20 @@ jobs:
             echo "    literals:" >> "$KUSTOMIZATION_FILE"
             echo "      - AWS_REGION=${{ github.event.inputs.aws_region }}" >> "$KUSTOMIZATION_FILE"
             echo "      - ENV_NAME=${{ github.event.inputs.env_name }}" >> "$KUSTOMIZATION_FILE"
+            echo "    options:" >> "$KUSTOMIZATION_FILE"
+            echo "      disableNameSuffixHash: true" >> "$KUSTOMIZATION_FILE"  # Ensures consistent naming
           fi
 
-          echo "✅ Kustomization updated to include AWS ConfigMap."
+          echo "✅ Kustomization updated to include AWS ConfigMap without suffix."
 
       - name: Update Deployment to Reference ConfigMap
         run: |
           DEPLOYMENT_FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
-
+  
           # Ensure the deployment correctly references the standalone ConfigMap
           yq -i '.spec.template.spec.containers[0].env += [{"name": "AWS_REGION", "valueFrom": {"configMapKeyRef": {"name": "aws-config", "key": "AWS_REGION"}}}]' $DEPLOYMENT_FILE
           yq -i '.spec.template.spec.containers[0].env += [{"name": "ENV_NAME", "valueFrom": {"configMapKeyRef": {"name": "aws-config", "key": "ENV_NAME"}}}]' $DEPLOYMENT_FILE
-
+  
           echo "✅ Deployment updated to reference ConfigMap values."
 
       - name: Update Image in Kustomize Manifest (All Applications)
