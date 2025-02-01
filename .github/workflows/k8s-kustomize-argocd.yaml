@@ -191,28 +191,6 @@ jobs:
           done
       
           echo "✅ Updates completed successfully!"
-
-      - name: Apply Namespace in All Kubernetes Manifests
-        run: |
-          echo "🔹 Updating namespace in final Kubernetes manifests to: $NAMESPACE"
-
-          # Find and update all YAML files under kustomize-base
-          find kustomize-base/ -type f -name "*.yaml" | while read FILE; do
-            if [[ "$FILE" == *"kustomization.yaml"* ]]; then
-              echo "Skipping namespace update for $FILE..."
-              continue
-            fi
-
-            echo "Updating namespace in: $FILE"
-
-            # Ensure metadata.namespace is updated if metadata exists
-            yq -i '(.metadata.namespace) |= (strenv(NAMESPACE))' "$FILE" || echo "❌ Failed to update metadata.namespace in $FILE"
-
-            # Ensure namespaceSelector.matchNames is updated if present
-            yq -i 'if has("spec") and .spec.namespaceSelector then .spec.namespaceSelector.matchNames = [strenv(NAMESPACE)] else . end' "$FILE" || echo "✅ No namespaceSelector found in $FILE, skipping."
-
-            echo "✅ Updated $FILE"
-          done
         
       - name: Generate Kubernetes ConfigMap with AWS Region and Environment
         run: |
@@ -271,7 +249,16 @@ jobs:
           echo "🔹 Updating image in $FILE to $IMAGE_URL"
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
-        
+
+      - name: Update Namespace for Application Chosen
+        run: |
+          NAMESPACE=${{ env.NAMESPACE }}
+          FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
+
+          echo "🔹 Updating namespace in $FILE to $NAMESPACE"
+          yq -i '.metadata.namespace = "'"$NAMESPACE"'"' $FILE
+          echo "✅ Namespace updated successfully!"
+
       - name: Apply Kustomize Overlays and Output New Configuration
         env:
           NAMESPACE: ${{ env.NAMESPACE }}
