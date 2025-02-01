@@ -1,3 +1,5 @@
+name: CI/CD Pipeline with Dynamic Kustomize
+
 on:
   workflow_dispatch:
     inputs:
