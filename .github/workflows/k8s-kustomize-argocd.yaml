@@ -143,7 +143,7 @@ jobs:
           tar xf kubeconform-linux-amd64.tar.gz
           sudo mv kubeconform /usr/local/bin/
 
-      - name: Clone Atlas Repository
+      - name: Clone or Update Atlas Repository
         env:
           GITHUB_TOKEN: ${{ secrets.ATLAS_GITHUB_PAT }}
         run: |
@@ -151,19 +151,17 @@ jobs:
           TARGET_BRANCH="${{ github.event.inputs.env_name }}"
           LOCAL_ATLAS_DIR="./atlas"
 
-          # If directory exists, remove it before cloning
-          if [ -d "$LOCAL_ATLAS_DIR" ]; then
-            echo "⚠️ Directory $LOCAL_ATLAS_DIR already exists. Removing it..."
-            rm -rf "$LOCAL_ATLAS_DIR"
+          if [ -d "$LOCAL_ATLAS_DIR/.git" ]; then
+            echo "📥 Atlas repository already exists. Pulling latest changes..."
+            cd "$LOCAL_ATLAS_DIR"
+            git reset --hard HEAD  # Reset local changes to avoid merge conflicts
+            git pull origin "$TARGET_BRANCH"
+          else
+            echo "📥 Cloning Atlas repository branch: $TARGET_BRANCH..."
+            git clone --branch "$TARGET_BRANCH" "https://x-access-token:${GITHUB_TOKEN}@${ATLAS_REPO#https://}" "$LOCAL_ATLAS_DIR"
           fi
 
-          echo "📥 Cloning Atlas repository branch: $TARGET_BRANCH..."
-          git clone --branch "$TARGET_BRANCH" "https://x-access-token:${GITHUB_TOKEN}@${ATLAS_REPO#https://}" "$LOCAL_ATLAS_DIR"
-
-          cd "$LOCAL_ATLAS_DIR"
-          git pull origin "$TARGET_BRANCH"
-
-          echo "✅ Pulled latest changes from Atlas repo."
+          echo "✅ Atlas repository is up to date."
 
       - name: Apply Merge Strategy (Smart Merge or Full Overwrite)
         run: |
@@ -191,7 +189,7 @@ jobs:
             echo "🧠 Applying Smart Merge Strategy..."
             if [[ -f "$EXISTING_CONFIG" ]]; then
               echo "🔹 Merging new configuration with existing deployment..."
-              yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' "$EXISTING_CONFIG" "$NEW_CONFIG" > "$MERGED_CONFIG"
+              yq eval-all "select(fileIndex == 0) * select(fileIndex == 1)" "$EXISTING_CONFIG" "$NEW_CONFIG" > "$MERGED_CONFIG"
             else
               echo "📄 No existing config found. Using generated config."
               cp "$NEW_CONFIG" "$MERGED_CONFIG"
