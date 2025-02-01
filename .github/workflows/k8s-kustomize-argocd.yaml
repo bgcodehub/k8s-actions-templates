@@ -205,8 +205,11 @@ jobs:
       
             echo "Updating namespace in: $FILE"
       
-            yq -i 'if has("metadata") and has("namespace") then .metadata.namespace = env(NAMESPACE) else . end' "$FILE"
-            yq -i 'if has("spec") and .spec.namespaceSelector then .spec.namespaceSelector.matchNames = ["'"$NAMESPACE"'"] else . end' "$FILE"
+            # Ensure metadata namespace is updated only if metadata exists
+            yq -i '(.metadata.namespace // "default") = strenv(NAMESPACE)' "$FILE" || echo "❌ Failed to update metadata.namespace in $FILE"
+      
+            # Ensure namespaceSelector.matchNames is updated only if it exists
+            yq -i 'select(has("spec") and .spec.namespaceSelector) |= .spec.namespaceSelector.matchNames = [strenv(NAMESPACE)]' "$FILE" || echo "✅ No namespaceSelector found in $FILE, skipping."
       
             echo "✅ Updated $FILE"
           done
