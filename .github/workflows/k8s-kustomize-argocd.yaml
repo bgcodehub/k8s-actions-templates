@@ -250,14 +250,13 @@ jobs:
           yq -i '.spec.template.spec.containers[0].image = "'"$IMAGE_URL"'"' $FILE
           echo "✅ Image updated successfully!"
 
-      - name: Update Namespace for Application Chosen
+      - name: Update Namespace in Base Kustomization
         run: |
-          NAMESPACE=${{ env.NAMESPACE }}
-          FILE="kustomize-base/${{ github.event.inputs.application }}/overlays/patches/deploy.yaml"
+          echo "🔹 Updating namespace in base/kustomization.yaml to: $NAMESPACE"
 
-          echo "🔹 Updating namespace in $FILE to $NAMESPACE"
-          yq -i '.metadata.namespace = "'"$NAMESPACE"'"' $FILE
-          echo "✅ Namespace updated successfully!"
+          yq -i '.namespace = strenv(NAMESPACE)' kustomize-base/base/kustomization.yaml
+
+          echo "✅ Namespace updated successfully in base/kustomization.yaml"
 
       - name: Apply Kustomize Overlays and Output New Configuration
         env:
