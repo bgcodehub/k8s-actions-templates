@@ -195,22 +195,22 @@ jobs:
       - name: Apply Namespace in All Kubernetes Manifests
         run: |
           echo "🔹 Updating namespace in final Kubernetes manifests to: $NAMESPACE"
-          
-          # Find and update all YAML files in overlays of any application
+
+          # Find and update all YAML files under kustomize-base
           find kustomize-base/ -type f -name "*.yaml" | while read FILE; do
             if [[ "$FILE" == *"kustomization.yaml"* ]]; then
               echo "Skipping namespace update for $FILE..."
               continue
             fi
-      
+
             echo "Updating namespace in: $FILE"
-      
-            # Ensure metadata namespace is updated only if metadata exists
-            yq -i '(.metadata.namespace // "default") = strenv(NAMESPACE)' "$FILE" || echo "❌ Failed to update metadata.namespace in $FILE"
-      
-            # Ensure namespaceSelector.matchNames is updated only if it exists
-            yq -i 'select(has("spec") and .spec.namespaceSelector) |= .spec.namespaceSelector.matchNames = [strenv(NAMESPACE)]' "$FILE" || echo "✅ No namespaceSelector found in $FILE, skipping."
-      
+
+            # Ensure metadata.namespace is updated if metadata exists
+            yq -i '(.metadata.namespace) |= (strenv(NAMESPACE))' "$FILE" || echo "❌ Failed to update metadata.namespace in $FILE"
+
+            # Ensure namespaceSelector.matchNames is updated if present
+            yq -i 'with(.spec.namespaceSelector; if . then .matchNames = [strenv(NAMESPACE)] else . end)' "$FILE" || echo "✅ No namespaceSelector found in $FILE, skipping."
+
             echo "✅ Updated $FILE"
           done
         
