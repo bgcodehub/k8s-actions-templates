@@ -209,7 +209,7 @@ jobs:
             yq -i '(.metadata.namespace) |= (strenv(NAMESPACE))' "$FILE" || echo "❌ Failed to update metadata.namespace in $FILE"
 
             # Ensure namespaceSelector.matchNames is updated if present
-            yq -i 'with(.spec.namespaceSelector; if . then .matchNames = [strenv(NAMESPACE)] else . end)' "$FILE" || echo "✅ No namespaceSelector found in $FILE, skipping."
+            yq -i 'if has("spec") and .spec.namespaceSelector then .spec.namespaceSelector.matchNames = [strenv(NAMESPACE)] else . end' "$FILE" || echo "✅ No namespaceSelector found in $FILE, skipping."
 
             echo "✅ Updated $FILE"
           done
