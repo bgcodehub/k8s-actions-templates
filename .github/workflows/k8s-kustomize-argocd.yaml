@@ -1,5 +1,3 @@
-name: CI/CD Pipeline with Dynamic Kustomize
-
 on:
   workflow_dispatch:
     inputs:
@@ -35,6 +33,13 @@ on:
       atlas_repository:
         description: "Enter your Atlas repository where manifests should be pushed"
         required: true
+      merge_strategy:
+        description: "Choose how to handle existing configs in Atlas"
+        required: true
+        type: choice
+        options:
+          - smart-merge
+          - full-overwrite
 
 jobs:
   extract-metadata:
@@ -111,11 +116,13 @@ jobs:
         run: |
           echo "APP_NAME=${{ needs.extract-metadata.outputs.app_name }}" >> "$GITHUB_ENV"
           echo "NAMESPACE=${{ needs.extract-metadata.outputs.namespace }}" >> "$GITHUB_ENV"
+          echo "MERGE_STRATEGY=${{ github.event.inputs.merge_strategy }}" >> "$GITHUB_ENV"
 
       - name: Debug Extracted Variables
         run: |
-          echo "✅ Extracted APP_NAME=${{ env.APP_NAME }}"
-          echo "✅ Extracted NAMESPACE=${{ env.NAMESPACE }}"
+          echo "✅ APP_NAME=${{ env.APP_NAME }}"
+          echo "✅ NAMESPACE=${{ env.NAMESPACE }}"
+          echo "✅ MERGE_STRATEGY=${{ env.MERGE_STRATEGY }}"
         
       - name: Checkout Kustomize Repository
         uses: actions/checkout@v3
@@ -133,6 +140,44 @@ jobs:
           curl -LO https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
           tar xf kubeconform-linux-amd64.tar.gz
           sudo mv kubeconform /usr/local/bin/
+
+      - name: Clone Atlas Repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.ATLAS_GITHUB_PAT }}
+        run: |
+          ATLAS_REPO="${{ github.event.inputs.atlas_repository }}"
+          TARGET_BRANCH="${{ github.event.inputs.env_name }}"
+          LOCAL_ATLAS_DIR="./atlas"
+
+          echo "📥 Cloning Atlas repository branch: $TARGET_BRANCH..."
+          git clone --branch "$TARGET_BRANCH" "https://x-access-token:${GITHUB_TOKEN}@${ATLAS_REPO#https://}" "$LOCAL_ATLAS_DIR"
+
+          cd "$LOCAL_ATLAS_DIR"
+          git pull origin "$TARGET_BRANCH"
+
+          echo "✅ Pulled latest changes from Atlas repo."
+
+      - name: Apply Merge Strategy (Smart Merge or Full Overwrite)
+        run: |
+          MERGE_STRATEGY="${{ github.event.inputs.merge_strategy }}"
+          NEW_CONFIG="kustomize-base/${{ github.event.inputs.application }}/overlays/kustomization.yaml"
+          EXISTING_CONFIG="atlas/k8s-configs/${{ github.event.inputs.application }}.yaml"
+          MERGED_CONFIG="atlas/k8s-configs/${{ github.event.inputs.application }}.yaml"
+
+          if [[ "$MERGE_STRATEGY" == "smart-merge" ]]; then
+            echo "🧠 Applying Smart Merge Strategy..."
+            if [[ -f "$EXISTING_CONFIG" ]]; then
+              echo "🔹 Merging new configuration with existing deployment..."
+              yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' "$EXISTING_CONFIG" "$NEW_CONFIG" > "$MERGED_CONFIG"
+            else
+              echo "📄 No existing config found. Using generated config."
+              cp "$NEW_CONFIG" "$MERGED_CONFIG"
+            fi
+
+          elif [[ "$MERGE_STRATEGY" == "full-overwrite" ]]; then
+            echo "⚠️ Applying Full Overwrite - This will REPLACE the existing configuration!"
+            cp "$NEW_CONFIG" "$EXISTING_CONFIG"
+          fi
 
       - name: Validate Application Customization
         run: |
