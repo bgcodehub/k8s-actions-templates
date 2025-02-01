@@ -151,6 +151,12 @@ jobs:
           TARGET_BRANCH="${{ github.event.inputs.env_name }}"
           LOCAL_ATLAS_DIR="./atlas"
 
+          # If directory exists, remove it before cloning
+          if [ -d "$LOCAL_ATLAS_DIR" ]; then
+            echo "⚠️ Directory $LOCAL_ATLAS_DIR already exists. Removing it..."
+            rm -rf "$LOCAL_ATLAS_DIR"
+          fi
+
           echo "📥 Cloning Atlas repository branch: $TARGET_BRANCH..."
           git clone --branch "$TARGET_BRANCH" "https://x-access-token:${GITHUB_TOKEN}@${ATLAS_REPO#https://}" "$LOCAL_ATLAS_DIR"
 
