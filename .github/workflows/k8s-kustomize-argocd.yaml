@@ -166,6 +166,9 @@ jobs:
           EXISTING_CONFIG="atlas/k8s-configs/${{ github.event.inputs.application }}.yaml"
           MERGED_CONFIG="atlas/k8s-configs/${{ github.event.inputs.application }}.yaml"
 
+          # Ensure the k8s-configs directory exists before proceeding
+          mkdir -p "$(dirname "$EXISTING_CONFIG")"
+
           if [[ "$MERGE_STRATEGY" == "smart-merge" ]]; then
             echo "🧠 Applying Smart Merge Strategy..."
             if [[ -f "$EXISTING_CONFIG" ]]; then
@@ -180,7 +183,7 @@ jobs:
             echo "⚠️ Applying Full Overwrite - This will REPLACE the existing configuration!"
             cp "$NEW_CONFIG" "$EXISTING_CONFIG"
           fi
-
+  
       - name: Validate Application Customization
         run: |
           if [[ "${{ github.event.inputs.application }}" != "go-api" && "${{ github.event.inputs.application }}" != "java-api" && "${{ github.event.inputs.modifications }}" != "{}" ]]; then
