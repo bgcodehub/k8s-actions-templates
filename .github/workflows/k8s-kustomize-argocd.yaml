@@ -165,30 +165,42 @@ jobs:
 
           echo "✅ Pulled latest changes from Atlas repo."
 
-      - name: Apply Merge Strategy (Smart Merge or Full Overwrite)
-        run: |
-          MERGE_STRATEGY="${{ github.event.inputs.merge_strategy }}"
-          NEW_CONFIG="kustomize-base/${{ github.event.inputs.application }}/overlays/kustomization.yaml"
-          EXISTING_CONFIG="atlas/k8s-configs/${{ github.event.inputs.application }}.yaml"
-          MERGED_CONFIG="atlas/k8s-configs/${{ github.event.inputs.application }}.yaml"
-
-          # Ensure the k8s-configs directory exists before proceeding
-          mkdir -p "$(dirname "$EXISTING_CONFIG")"
-
-          if [[ "$MERGE_STRATEGY" == "smart-merge" ]]; then
-            echo "🧠 Applying Smart Merge Strategy..."
-            if [[ -f "$EXISTING_CONFIG" ]]; then
-              echo "🔹 Merging new configuration with existing deployment..."
-              yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' "$EXISTING_CONFIG" "$NEW_CONFIG" > "$MERGED_CONFIG"
+          - name: Apply Merge Strategy (Smart Merge or Full Overwrite)
+          run: |
+            MERGE_STRATEGY="${{ github.event.inputs.merge_strategy }}"
+            AWS_REGION="${{ github.event.inputs.aws_region }}"
+  
+            # Determine correct region-based directory
+            if [[ "$AWS_REGION" == "us-east-1" ]]; then
+              REGION_DIR="use1-01"
+            elif [[ "$AWS_REGION" == "us-west-2" ]]; then
+              REGION_DIR="usw2-01"
             else
-              echo "📄 No existing config found. Using generated config."
-              cp "$NEW_CONFIG" "$MERGED_CONFIG"
+              echo "❌ Error: Unsupported AWS Region: $AWS_REGION"
+              exit 1
             fi
-
-          elif [[ "$MERGE_STRATEGY" == "full-overwrite" ]]; then
-            echo "⚠️ Applying Full Overwrite - This will REPLACE the existing configuration!"
-            cp "$NEW_CONFIG" "$EXISTING_CONFIG"
-          fi
+  
+            NEW_CONFIG="kustomize-base/${{ github.event.inputs.application }}/overlays/kustomization.yaml"
+            EXISTING_CONFIG="atlas/$REGION_DIR/${{ github.event.inputs.application }}/deployment.yaml"
+            MERGED_CONFIG="atlas/$REGION_DIR/${{ github.event.inputs.application }}/deployment.yaml"
+  
+            # Ensure the region-based directory exists before proceeding
+            mkdir -p "$(dirname "$EXISTING_CONFIG")"
+  
+            if [[ "$MERGE_STRATEGY" == "smart-merge" ]]; then
+              echo "🧠 Applying Smart Merge Strategy..."
+              if [[ -f "$EXISTING_CONFIG" ]]; then
+                echo "🔹 Merging new configuration with existing deployment..."
+                yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' "$EXISTING_CONFIG" "$NEW_CONFIG" > "$MERGED_CONFIG"
+              else
+                echo "📄 No existing config found. Using generated config."
+                cp "$NEW_CONFIG" "$MERGED_CONFIG"
+              fi
+  
+            elif [[ "$MERGE_STRATEGY" == "full-overwrite" ]]; then
+              echo "⚠️ Applying Full Overwrite - This will REPLACE the existing configuration!"
+              cp "$NEW_CONFIG" "$EXISTING_CONFIG"
+            fi
   
       - name: Validate Application Customization
         run: |
