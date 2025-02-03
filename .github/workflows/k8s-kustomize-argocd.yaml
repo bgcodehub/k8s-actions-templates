@@ -118,13 +118,11 @@ jobs:
         run: |
           echo "APP_NAME=${{ needs.extract-metadata.outputs.app_name }}" >> "$GITHUB_ENV"
           echo "NAMESPACE=${{ needs.extract-metadata.outputs.namespace }}" >> "$GITHUB_ENV"
-          echo "MERGE_STRATEGY=${{ github.event.inputs.merge_strategy }}" >> "$GITHUB_ENV"
 
       - name: Debug Extracted Variables
         run: |
-          echo "✅ APP_NAME=${{ env.APP_NAME }}"
-          echo "✅ NAMESPACE=${{ env.NAMESPACE }}"
-          echo "✅ MERGE_STRATEGY=${{ env.MERGE_STRATEGY }}"
+          echo "✅ Extracted APP_NAME=${{ env.APP_NAME }}"
+          echo "✅ Extracted NAMESPACE=${{ env.NAMESPACE }}"
         
       - name: Checkout Kustomize Repository
         uses: actions/checkout@v3
@@ -143,63 +141,6 @@ jobs:
           tar xf kubeconform-linux-amd64.tar.gz
           sudo mv kubeconform /usr/local/bin/
 
-      - name: Clone or Update Atlas Repository
-        env:
-          GITHUB_TOKEN: ${{ secrets.ATLAS_GITHUB_PAT }}
-        run: |
-          ATLAS_REPO="${{ github.event.inputs.atlas_repository }}"
-          TARGET_BRANCH="${{ github.event.inputs.env_name }}"
-          LOCAL_ATLAS_DIR="./atlas"
-
-          if [ -d "$LOCAL_ATLAS_DIR/.git" ]; then
-            echo "📥 Atlas repository already exists. Pulling latest changes..."
-            cd "$LOCAL_ATLAS_DIR"
-            git reset --hard HEAD  # Reset local changes to avoid merge conflicts
-            git pull origin "$TARGET_BRANCH"
-          else
-            echo "📥 Cloning Atlas repository branch: $TARGET_BRANCH..."
-            git clone --branch "$TARGET_BRANCH" "https://x-access-token:${GITHUB_TOKEN}@${ATLAS_REPO#https://}" "$LOCAL_ATLAS_DIR"
-          fi
-
-          echo "✅ Atlas repository is up to date."
-
-      - name: Apply Merge Strategy (Smart Merge or Full Overwrite)
-        run: |
-          MERGE_STRATEGY="${{ github.event.inputs.merge_strategy }}"
-          AWS_REGION="${{ github.event.inputs.aws_region }}"
-
-          # Determine correct region-based directory
-          if [[ "$AWS_REGION" == "us-east-1" ]]; then
-            REGION_DIR="use1-01"
-          elif [[ "$AWS_REGION" == "us-west-2" ]]; then
-            REGION_DIR="usw2-01"
-          else
-            echo "❌ Error: Unsupported AWS Region: $AWS_REGION"
-            exit 1
-          fi
-
-          NEW_CONFIG="kustomize-base/${{ github.event.inputs.application }}/overlays/kustomization.yaml"
-          EXISTING_CONFIG="atlas/$REGION_DIR/${{ github.event.inputs.application }}/deployment.yaml"
-          MERGED_CONFIG="atlas/$REGION_DIR/${{ github.event.inputs.application }}/deployment.yaml"
-
-          # Ensure the region-based directory exists before proceeding
-          mkdir -p "$(dirname "$EXISTING_CONFIG")"
-
-          if [[ "$MERGE_STRATEGY" == "smart-merge" ]]; then
-            echo "🧠 Applying Smart Merge Strategy..."
-            if [[ -f "$EXISTING_CONFIG" ]]; then
-              echo "🔹 Merging new configuration with existing deployment..."
-              yq eval-all "select(fileIndex == 0) * select(fileIndex == 1)" "$EXISTING_CONFIG" "$NEW_CONFIG" > "$MERGED_CONFIG"
-            else
-              echo "📄 No existing config found. Using generated config."
-              cp "$NEW_CONFIG" "$MERGED_CONFIG"
-            fi
-
-          elif [[ "$MERGE_STRATEGY" == "full-overwrite" ]]; then
-            echo "⚠️ Applying Full Overwrite - This will REPLACE the existing configuration!"
-            cp "$NEW_CONFIG" "$EXISTING_CONFIG"
-          fi
-  
       - name: Validate Application Customization
         run: |
           if [[ "${{ github.event.inputs.application }}" != "go-api" && "${{ github.event.inputs.application }}" != "java-api" && "${{ github.event.inputs.modifications }}" != "{}" ]]; then
@@ -340,6 +281,45 @@ jobs:
         run: |
           kubeconform -strict -summary -ignore-missing-schemas -schema-location default "${{ github.event.inputs.application }}/deployment.yaml"
 
+  merge-configurations:
+    name: Merge Existing and Updated Configurations
+    needs: manage-manifests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Atlas Repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.event.inputs.atlas_repository }}
+          ref: ${{ github.event.inputs.env_name }}
+          token: ${{ secrets.ATLAS_GITHUB_PAT }}
+
+      - name: Determine Target Directory in Atlas
+        run: |
+          if [[ "${{ github.event.inputs.aws_region }}" == "us-east-1" ]]; then
+            TARGET_DIR="use1-01"
+          elif [[ "${{ github.event.inputs.aws_region }}" == "us-west-2" ]]; then
+            TARGET_DIR="usw2-01"
+          else
+            echo "❌ Error: Invalid AWS Region selected."
+            exit 1
+          fi
+
+          echo "FINAL_PATH=atlas/$TARGET_DIR/${{ github.event.inputs.application }}" >> "$GITHUB_ENV"
+
+      - name: Merge Existing and Upaded Configurations
+        run: |
+          mkdir -p "$FINAL_PATH"
+          echo "📥 Pulling existing configuration from $FINAL_PATH..."
+          if [[ -f "$FINAL_PATH/deployment.yaml" ]]; then
+            echo "🔄 Merging existing configuration with new deployment.yaml"
+            yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' "$FINAL_PATH/deployment.yaml" "${{ github.event.inputs.application }}/deployment.yaml" > merged-deployment.yaml
+          else
+            echo "⚠️ No existing deployment found. Using the new configuration as the final version."
+            cp "${{ github.event.inputs.application }}/deployment.yaml" merged-deployment.yaml
+          fi
+
+          mv merged-deployment.yaml "$FINAL_PATH/deployment.yaml"
+      
       - name: Configure Git for Unsigned Commits
         run: |
           git config --global user.name "GitHub Actions"
