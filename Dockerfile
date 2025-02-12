@@ -1,43 +1,21 @@
-FROM golang:1.23-alpine as builder
+# Use an official lightweight Go runtime image
+FROM golang:1.20
 
-ARG REVISION
+# Set the working directory inside the container
+WORKDIR /app
 
-RUN mkdir -p /podinfo/
+# Copy the Go module files and download dependencies
+COPY go.mod go.sum ./
+RUN go mod tidy
 
-WORKDIR /podinfo
-
+# Copy the source code
 COPY . .
 
-RUN go mod download
+# Build the Go application
+RUN go build -o go-api
 
-RUN CGO_ENABLED=0 go build -ldflags "-s -w \
-    -X github.com/stefanprodan/podinfo/pkg/version.REVISION=${REVISION}" \
-    -a -o bin/podinfo cmd/podinfo/*
+# Define the runtime command
+CMD ["/app/go-api"]
 
-RUN CGO_ENABLED=0 go build -ldflags "-s -w \
-    -X github.com/stefanprodan/podinfo/pkg/version.REVISION=${REVISION}" \
-    -a -o bin/podcli cmd/podcli/*
-
-FROM alpine:3.20
-
-ARG BUILD_DATE
-ARG VERSION
-ARG REVISION
-
-LABEL maintainer="stefanprodan"
-
-RUN addgroup -S app \
-    && adduser -S -G app app \
-    && apk --no-cache add \
-    ca-certificates curl netcat-openbsd
-
-WORKDIR /home/app
-
-COPY --from=builder /podinfo/bin/podinfo .
-COPY --from=builder /podinfo/bin/podcli /usr/local/bin/podcli
-COPY ./ui ./ui
-RUN chown -R app:app ./
-
-USER app
-
-CMD ["./podinfo"]
+# Expose the port the app runs on
+EXPOSE 8080
