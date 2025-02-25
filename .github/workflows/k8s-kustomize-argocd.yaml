@@ -81,6 +81,9 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Make generate_dockerfile.py Executable
+        run: chmod +x ./generate_dockerfile.py
+
       - name: Generate Dockerfile
         run: ./generate_dockerfile.py
 
