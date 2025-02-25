@@ -76,6 +76,19 @@ jobs:
           echo "✅ APP_NAME=${{ env.APP_NAME }}"
           echo "✅ NAMESPACE=${{ env.NAMESPACE }}"
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Generate Dockerfile
+        run: ./generate_dockerfile.py
+
+      - name: Print Generated Dockerfile
+        run: |
+          echo "📝 Generated Dockerfile contents:"
+          cat Dockerfile || echo "❌ Dockerfile not found or empty."
+
       - name: Setup Docker
         uses: docker/setup-buildx-action@v2
 
