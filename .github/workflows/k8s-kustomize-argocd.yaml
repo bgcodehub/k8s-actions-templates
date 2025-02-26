@@ -125,7 +125,8 @@ jobs:
 
   manage-manifests:
     name: Manage Kubernetes Manifests
-    needs: [ extract-metadata, build-and-test ]
+    # needs: [ extract-metadata, build-and-test ]
+    needs: extract-metadata
     runs-on: ubuntu-latest
     steps:
       - name: Set Environment Variables from Job Outputs
