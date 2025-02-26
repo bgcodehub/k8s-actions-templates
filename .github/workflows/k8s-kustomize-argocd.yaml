@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       dockerfile:
-        description: "Do you have a custom Dockerfile?"
+        description: "Create Dockerfile for the application"
         required: true
         type: boolean
       application:
