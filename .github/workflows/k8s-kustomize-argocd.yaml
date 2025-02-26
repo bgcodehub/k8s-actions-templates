@@ -3,6 +3,10 @@ name: CI/CD Pipeline with Dynamic Kustomize
 on:
   workflow_dispatch:
     inputs:
+      dockerfile:
+        description: "Do you have a custom Dockerfile?"
+        required: true
+        type: boolean
       application:
         description: "Select application type"
         required: true
