@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Weather Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🌌 Space Weather Dashboard</h1>
+        <div class="weather-card">
+            <h2>Aurora Visibility</h2>
+            <p class="aurora {{ weather.aurora_visibility|lower }}">{{ weather.aurora_visibility }}</p>
+            <h2>Solar Activity (SFU)</h2>
+            <p>{{ "%.2f" | format(weather.solar_activity) }}</p>
+            <h2>Last Updated</h2>
+            <p>{{ weather.last_updated }}</p>
+        </div>
+        <div class="map-overlay">
+            <p>Simulated Earth View with Aurora</p>
+            <div class="aurora-effect"></div>
+        </div>
+    </div>
+</body>
+</html>
