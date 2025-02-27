@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 import random
 import time
 
@@ -20,7 +20,7 @@ def index():
 @app.route('/health')
 def health():
     """Health check endpoint for Kubernetes liveness probe"""
-    return "OK", 200
+    return jsonify({"status": "healthy", "time": time.time()}), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=False)
