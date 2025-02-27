@@ -79,6 +79,7 @@ jobs:
         run: |
           echo "✅ APP_NAME=${{ env.APP_NAME }}"
           echo "✅ NAMESPACE=${{ env.NAMESPACE }}"
+          echo "✅ APPLICATION=${{ github.event.inputs.application }}"
 
       - name: Set up Python
         if: ${{ github.event.inputs.dockerfile == 'true' }}
@@ -95,7 +96,15 @@ jobs:
 
       - name: Generate Dockerfile
         if: ${{ github.event.inputs.dockerfile == 'true' }}
-        run: ./generate_dockerfile.py
+        env:
+          APPLICATION: ${{ github.event.inputs.application }}
+          PORT: "8080"
+        run: |
+          ./generate_dockerfile.py
+          if [ ! -f Dockerfile ]; then
+            echo "❌ Failed to generate Dockerfile."
+            exit 1
+          fi
 
       - name: Print Dockerfile Contents
         run: |
@@ -117,6 +126,10 @@ jobs:
             exit 1
           fi
           docker build -t ${{ env.APP_NAME }}:$GITHUB_SHA .
+          if [ $? -ne 0 ]; then
+            echo "❌ Docker build failed."
+            exit 1
+          fi
 
       - name: Login to JFrog Artifactory
         env:
@@ -124,7 +137,7 @@ jobs:
           JFROG_USER: ${{ secrets.JFROG_USER }}
           JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
         run: |
-          echo $JFROG_API_KEY | docker login $JFROG_URL -u $JFROG_USER --password-stdin
+          echo "$JFROG_API_KEY" | docker login "$JFROG_URL" -u "$JFROG_USER" --password-stdin
 
       - name: Tag and Push Image to JFrog Artifactory
         env:
