@@ -86,9 +86,12 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Make generate_dockerfile.py Executable
+      - name: Fetch generate_dockerfile.py from Gist
         if: ${{ github.event.inputs.dockerfile == 'true' }}
-        run: chmod +x ./generate_dockerfile.py
+        run: |
+          curl -o generate_dockerfile.py https://gist.githubusercontent.com/bgcodehub/9057942959e961954cc71eb22e084d7d/raw/f7f84d11334c32d4171fb5c8923b24cbca66d8a9/generate_dockerfile.py
+          chmod +x generate_dockerfile.py
+          ls -l generate_dockerfile.py  # Debug to confirm it’s downloaded
 
       - name: Generate Dockerfile
         if: ${{ github.event.inputs.dockerfile == 'true' }}
